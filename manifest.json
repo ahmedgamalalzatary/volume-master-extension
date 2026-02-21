@@ -1,37 +1,39 @@
 {
-  "manifest_version": 3,
-  "name": "Volume Control",
-  "version": "1.0.0",
-  "description": "Boost and control the volume of any tab from 0% up to 600%.",
-
-  "permissions": ["activeTab", "tabs"],
-
-  "action": {
-    "default_popup": "popup/popup.html",
-    "default_title": "Volume Control",
-    "default_icon": {
+   "manifest_version": 3,
+   "name": "Volume Control",
+   "version": "1.0.0",
+   "description": "Boost and control the volume of any tab from 0% up to 600%.",
+   "permissions": [
+      "activeTab",
+      "tabs"
+   ],
+   "action": {
+      "default_popup": "popup/popup.html",
+      "default_title": "Volume Control",
+      "default_icon": {
+         "48": "icons/icon.svg",
+         "96": "icons/icon.svg"
+      }
+   },
+   "icons": {
       "48": "icons/icon.svg",
       "96": "icons/icon.svg"
-    }
-  },
-
-  "icons": {
-    "48": "icons/icon.svg",
-    "96": "icons/icon.svg"
-  },
-
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content-script.js"],
-      "run_at": "document_idle"
-    }
-  ],
-
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "volume-control@personal",
-      "strict_min_version": "109.0"
-    }
-  }
+   },
+   "content_scripts": [
+      {
+         "matches": [
+            "<all_urls>"
+         ],
+         "js": [
+            "content-script.js"
+         ],
+         "run_at": "document_idle"
+      }
+   ],
+   "browser_specific_settings": {
+      "gecko": {
+         "id": "volume-control@personal",
+         "strict_min_version": "109.0"
+      }
+   }
 }
