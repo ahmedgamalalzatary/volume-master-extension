@@ -1,12 +1,12 @@
 # Volume Control
 
-A browser extension that controls the volume of any tab from 0% to 100%.
+A browser extension that controls the volume of any tab from 0% to 200%.
 
 ## Features
 
-- **Volume Control**: Adjust volume from 0% to 100%
+- **Volume Control**: Adjust volume from 0% to 200%
 - **Fine-grained Control**: Smooth slider with 1% steps
-- **Quick Presets**: One-click buttons for 10%, 20%, 50%, and 100%
+- **Quick Presets**: One-click buttons for 10%, 20%, 50%, and 200%
 - **Keyboard Shortcuts**: Arrow keys step ±5%
 - **Cross-browser**: Works on both Chrome and Firefox
 
@@ -42,7 +42,7 @@ A browser extension that controls the volume of any tab from 0% to 100%.
 The extension directly sets the `volume` property on all `<audio>` and `<video>` elements in the page:
 
 1. Content script listens for volume change messages from the popup
-2. Volume is applied to all media elements via `el.volume = desiredVolume / 100`
+2. Volume is applied to all media elements via `el.volume = desiredVolume / 200`
 3. A `MutationObserver` picks up dynamically added media elements
 
 ## Permissions
