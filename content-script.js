@@ -99,17 +99,28 @@ async function applyVolume() {
 
 // Page-gesture fallback: if context was suspended when boost was requested,
 // wire remaining elements and re-apply as soon as the user touches the page.
+// An AbortController lets us remove all three listeners at once the moment
+// the AudioContext transitions to 'running', so they never fire again.
+const resumeAC = new AbortController();
 ['click', 'keydown', 'pointerdown'].forEach(evt =>
     document.addEventListener(evt, async () => {
         if (!audioCtx || audioCtx.state !== 'suspended') return;
         try { await audioCtx.resume(); } catch (_) { }
-        if (audioCtx.state === 'running') applyVolume();
-    }, { capture: true })
+        if (audioCtx.state === 'running') {
+            resumeAC.abort();   // unregisters all three listeners
+            applyVolume();
+        }
+    }, { capture: true, signal: resumeAC.signal })
 );
 
 // Pick up dynamically added media elements.
-new MutationObserver(() => applyVolume())
-    .observe(document.documentElement, { subtree: true, childList: true });
+// Debounced so that bursts of DOM mutations (e.g. SPA route changes, ad injection)
+// result in a single applyVolume() call rather than one per mutation record.
+let mutationDebounceTimer = null;
+new MutationObserver(() => {
+    clearTimeout(mutationDebounceTimer);
+    mutationDebounceTimer = setTimeout(() => applyVolume(), 150);
+}).observe(document.documentElement, { subtree: true, childList: true });
 
 function getVolume() {
     return document.querySelector('audio, video') ? desiredVolume : null;
