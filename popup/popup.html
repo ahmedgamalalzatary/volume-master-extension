@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Volume Control</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+  <div class="container">
+
+    <!-- Header -->
+    <header class="header">
+      <img src="../icons/icon.svg" class="header__logo" alt="">
+      <h1 class="header__title">Volume Control</h1>
+    </header>
+
+    <!-- Volume display -->
+    <div class="volume-display">
+      <span id="volumeValue" class="volume-display__value">100</span>
+      <span class="volume-display__unit">%</span>
+    </div>
+
+    <!-- Slider -->
+    <div class="slider-wrap">
+      <input
+        type="range"
+        id="volumeSlider"
+        class="slider"
+        min="0"
+        max="600"
+        value="100"
+        step="1"
+      >
+      <div class="slider-labels">
+        <span>0%</span>
+        <span>100%</span>
+        <span>600%</span>
+      </div>
+    </div>
+
+    <!-- Quick-set buttons -->
+    <div class="quick-btns">
+      <button class="quick-btn" data-vol="50">50%</button>
+      <button class="quick-btn" data-vol="100">100%</button>
+      <button class="quick-btn" data-vol="200">200%</button>
+      <button class="quick-btn" data-vol="400">400%</button>
+      <button class="quick-btn" data-vol="600">600%</button>
+    </div>
+
+    <!-- No-media notice -->
+    <p id="noMediaMsg" class="no-media is-hidden">
+      No audio or video detected on this tab yet.<br>
+      Set a volume — it will apply when media starts.
+    </p>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
