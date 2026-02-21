@@ -9,13 +9,9 @@ let tabId = null;
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-/** Update the big number and its colour based on the level. */
+/** Update the big number display. */
 function renderVolume(vol) {
     valueEl.textContent = vol;
-    valueEl.classList.remove('is-warning', 'is-danger');
-    if (vol > 300) valueEl.classList.add('is-danger');
-    else if (vol > 100) valueEl.classList.add('is-warning');
-
     // Highlight matching quick-btn
     quickBtns.forEach(btn => {
         btn.classList.toggle('is-active', parseInt(btn.dataset.vol, 10) === vol);
@@ -61,19 +57,10 @@ async function init() {
 
 // ─── Slider step-snap logic ────────────────────────────────────────────────
 // 0–10  → step 1%   (fine control for quiet volumes)
-// 11–400 → step 10%  (coarse control for loud volumes)
-
-function snapVolume(raw) {
-    const v = Math.max(0, Math.min(400, parseInt(raw, 10)));
-    if (v <= 10) return v;
-    return Math.round(v / 10) * 10;
-}
-
 // ─── Slider ────────────────────────────────────────────────────────────────
 
 slider.addEventListener('input', () => {
-    const vol = snapVolume(slider.value);
-    slider.value = vol; // snap the thumb position
+    const vol = parseInt(slider.value, 10);
     renderVolume(vol);
     sendVolume(vol);
 });
@@ -90,38 +77,19 @@ quickBtns.forEach(btn => {
 });
 
 // ─── Keyboard shortcuts ────────────────────────────────────────────────────
-// 0–4  → set volume to 0%, 100%, 200%, 300%, 400%
-// ↑/→  → step up   (uses snap logic)
-// ↓/←  → step down (uses snap logic)
+// ↑/→ → +5%    ↓/← → -5%
 
 document.addEventListener('keydown', e => {
-    // Ignore if focus is inside an input
     if (e.target !== document.body && e.target !== document.documentElement) return;
-
-    const digit = parseInt(e.key, 10);
-    if (!isNaN(digit) && digit >= 0 && digit <= 4) {
-        const vol = digit * 100;
-        slider.value = vol;
-        renderVolume(vol);
-        sendVolume(vol);
-        return;
-    }
-
     const current = parseInt(slider.value, 10);
     if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
         e.preventDefault();
-        const step = current < 10 ? 1 : 10;
-        const vol = Math.min(400, current + step);
-        slider.value = vol;
-        renderVolume(vol);
-        sendVolume(vol);
+        const vol = Math.min(100, current + 5);
+        slider.value = vol; renderVolume(vol); sendVolume(vol);
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
         e.preventDefault();
-        const step = current <= 10 ? 1 : 10;
-        const vol = Math.max(0, current - step);
-        slider.value = vol;
-        renderVolume(vol);
-        sendVolume(vol);
+        const vol = Math.max(0, current - 5);
+        slider.value = vol; renderVolume(vol); sendVolume(vol);
     }
 });
 
