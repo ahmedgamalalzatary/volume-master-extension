@@ -1,0 +1,12 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp
+
+# Build artifacts (if a build step is added later)
+dist/
+node_modules/
+*.zip
