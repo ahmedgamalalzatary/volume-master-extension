@@ -80,7 +80,7 @@ quickBtns.forEach(btn => {
 });
 
 // ─── Keyboard shortcuts ────────────────────────────────────────────────────
-// ↑/→ → +5%    ↓/← → -5%
+// ↑/→ → +10%    ↓/← → -10%
 
 document.addEventListener('keydown', e => {
     if (e.target !== document.body && e.target !== document.documentElement) return;

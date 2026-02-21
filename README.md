@@ -6,8 +6,8 @@ A browser extension that controls the volume of any tab from 0% to 200%.
 
 - **Volume Control**: Adjust volume from 0% to 200%
 - **Fine-grained Control**: Smooth slider with 1% steps
-- **Quick Presets**: One-click buttons for 10%, 20%, 50%, and 200%
-- **Keyboard Shortcuts**: Arrow keys step ±5%
+- **Quick Presets**: One-click buttons for 10%, 20%, 30%, 50%, 100%, 150%, and 200%
+- **Keyboard Shortcuts**: Arrow keys step ±10%
 - **Cross-browser**: Works on both Chrome and Firefox
 
 ## Installation
@@ -39,11 +39,16 @@ A browser extension that controls the volume of any tab from 0% to 200%.
 
 ## How It Works
 
-The extension directly sets the `volume` property on all `<audio>` and `<video>` elements in the page:
+The extension uses a hybrid approach to control volume:
 
-1. Content script listens for volume change messages from the popup
-2. Volume is applied to all media elements via `el.volume = desiredVolume / 200`
-3. A `MutationObserver` picks up dynamically added media elements
+- **For volumes up to 100%**: Directly sets the `volume` property on all `<audio>` and `<video>` elements.
+- **For volumes above 100% (boosting)**: Routes audio through a Web Audio `AudioContext` with a `GainNode`, which can amplify the signal beyond the browser's native 100% limit. Native `el.volume` is kept at 1.0 and the GainNode handles all amplification.
+
+This approach includes safeguards to:
+
+1. Avoid processing cross-origin media without CORS headers, which would permanently mute those elements.
+2. Wait for a user gesture to resume a suspended `AudioContext`, preventing tabs from going silent on page load.
+3. Pick up dynamically added media elements via a debounced `MutationObserver`.
 
 ## Permissions
 

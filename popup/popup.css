@@ -144,7 +144,7 @@ body {
 .quick-btns {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 6px;
+    gap: 6px 5px;
 }
 
 .quick-btn {
