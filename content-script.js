@@ -15,7 +15,7 @@ let desiredVolume = 100;
 
 function canUseWebAudioBoost(el) {
     const src = el.currentSrc || el.src;
-    if (!src) return true;
+    if (!src) return false; // defer wiring until src is known; avoids permanent pipeline capture on a cross-origin element
 
     try {
         const url = new URL(src, location.href);
@@ -84,8 +84,10 @@ async function applyVolume() {
     if (audioCtx.state !== 'running') {
         // Context still suspended (no page-level user gesture yet).
         // Keep audio alive at native max; boost will kick in after page interaction.
+        // Set el.volume = 1.0 on ALL elements including 'skipped' ones, so
+        // cross-origin media is not left at a stale lower volume.
         document.querySelectorAll('audio, video').forEach(el => {
-            if (!elementStatus.has(el)) el.volume = 1.0;
+            el.volume = 1.0;
         });
         return;
     }
@@ -119,7 +121,7 @@ const resumeAC = new AbortController();
 let mutationDebounceTimer = null;
 new MutationObserver(() => {
     clearTimeout(mutationDebounceTimer);
-    mutationDebounceTimer = setTimeout(() => applyVolume(), 150);
+    mutationDebounceTimer = setTimeout(() => Promise.resolve(applyVolume()).catch(() => { }), 150);
 }).observe(document.documentElement, { subtree: true, childList: true });
 
 function getVolume() {
@@ -129,9 +131,7 @@ function getVolume() {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.action === 'set-volume') {
         desiredVolume = Math.max(0, Math.min(200, msg.volume));
-        applyVolume().then(() => {
-            sendResponse({ ok: true, volume: desiredVolume });
-        }).catch(() => {
+        applyVolume().finally(() => {
             sendResponse({ ok: true, volume: desiredVolume });
         });
     } else if (msg.action === 'get-volume') {
