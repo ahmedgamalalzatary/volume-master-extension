@@ -12,6 +12,9 @@ let tabId = null;
 /** Update the big number display. */
 function renderVolume(vol) {
     valueEl.textContent = vol;
+    // Color feedback: normal ≤100, warning 101–150, danger 151–200
+    valueEl.classList.toggle('is-warning', vol > 100 && vol <= 150);
+    valueEl.classList.toggle('is-danger', vol > 150);
     // Highlight matching quick-btn
     quickBtns.forEach(btn => {
         btn.classList.toggle('is-active', parseInt(btn.dataset.vol, 10) === vol);
@@ -77,18 +80,18 @@ quickBtns.forEach(btn => {
 });
 
 // ─── Keyboard shortcuts ────────────────────────────────────────────────────
-// ↑/→ → +5%    ↓/← → -5%
+// ↑/→ → +10%    ↓/← → -10%
 
 document.addEventListener('keydown', e => {
     if (e.target !== document.body && e.target !== document.documentElement) return;
     const current = parseInt(slider.value, 10);
     if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
         e.preventDefault();
-        const vol = Math.min(100, current + 5);
+        const vol = Math.min(200, current + 10);
         slider.value = vol; renderVolume(vol); sendVolume(vol);
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
         e.preventDefault();
-        const vol = Math.max(0, current - 5);
+        const vol = Math.max(0, current - 10);
         slider.value = vol; renderVolume(vol); sendVolume(vol);
     }
 });

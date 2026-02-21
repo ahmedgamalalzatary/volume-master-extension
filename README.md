@@ -1,14 +1,13 @@
 # Volume Control
 
-A browser extension that boosts and controls the volume of any tab from 0% up to 400%.
+A browser extension that controls the volume of any tab from 0% to 200%.
 
 ## Features
 
-- **Volume Boost**: Amplify audio up to 400% using Web Audio API
-- **Fine-grained Control**: Slider with smart snapping (1% steps below 10%, 10% steps above)
-- **Quick Presets**: One-click buttons for 10%, 20%, 50%, 100%, 200%, and 400%
-- **Keyboard Shortcuts**: Press 0-4 for 0%-400%, arrow keys for stepping
-- **Visual Feedback**: Color-coded volume display (purple → warning orange → danger red)
+- **Volume Control**: Adjust volume from 0% to 200%
+- **Fine-grained Control**: Smooth slider with 1% steps
+- **Quick Presets**: One-click buttons for 10%, 20%, 30%, 50%, 100%, 150%, and 200%
+- **Keyboard Shortcuts**: Arrow keys step ±10%
 - **Cross-browser**: Works on both Chrome and Firefox
 
 ## Installation
@@ -28,7 +27,7 @@ A browser extension that boosts and controls the volume of any tab from 0% up to
 
 ```
 ├── manifest.json        # Extension manifest (Manifest V3)
-├── content-script.js    # Web Audio volume control logic
+├── content-script.js    # Volume control logic
 ├── popup/
 │   ├── popup.html       # Extension popup UI
 │   ├── popup.css        # Styling (dark theme)
@@ -40,21 +39,16 @@ A browser extension that boosts and controls the volume of any tab from 0% up to
 
 ## How It Works
 
-### Volume Amplification (>100%)
+The extension uses a hybrid approach to control volume:
 
-Browsers cap native `element.volume` at 1.0 (100%). To exceed this limit, the extension routes audio through a Web Audio `GainNode` which can amplify beyond 1.0:
+- **For volumes up to 100%**: Directly sets the `volume` property on all `<audio>` and `<video>` elements.
+- **For volumes above 100% (boosting)**: Routes audio through a Web Audio `AudioContext` with a `GainNode`, which can amplify the signal beyond the browser's native 100% limit. Native `el.volume` is kept at 1.0 and the GainNode handles all amplification.
 
-1. When media plays, the content script connects the element to an `AudioContext` with a `GainNode`
-2. The gain value is set to `desiredVolume / 100`
-3. Native volume is kept at 1.0 — the GainNode handles all amplification
+This approach includes safeguards to:
 
-### User Gesture Requirement
-
-Firefox's autoplay policy requires a user gesture in the tab to allow an `AudioContext` to run. The extension works around this by:
-
-- Listening for the `play` event on media elements (a genuine user gesture)
-- Creating and resuming the `AudioContext` inside that event handler
-- By the time the popup is opened, the context is already running
+1. Avoid processing cross-origin media without CORS headers, which would permanently mute those elements.
+2. Wait for a user gesture to resume a suspended `AudioContext`, preventing tabs from going silent on page load.
+3. Pick up dynamically added media elements via a debounced `MutationObserver`.
 
 ## Permissions
 
