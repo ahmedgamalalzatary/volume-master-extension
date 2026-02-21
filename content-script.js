@@ -63,7 +63,7 @@ function touchAudioContext() {
 
 // pointerdown fires before click, giving us the earliest possible gesture entry.
 document.addEventListener('pointerdown', touchAudioContext, { capture: true, passive: true });
-document.addEventListener('keydown',     touchAudioContext, { capture: true, passive: true });
+document.addEventListener('keydown', touchAudioContext, { capture: true, passive: true });
 
 // ─── Element connection ────────────────────────────────────────────────────
 
@@ -78,7 +78,7 @@ function connectElement(el) {
 
     try {
         const source = sharedCtx.createMediaElementSource(el);
-        const gain   = sharedCtx.createGain();
+        const gain = sharedCtx.createGain();
         gain.gain.value = desiredVolume / 100;
         source.connect(gain);
         gain.connect(sharedCtx.destination);
