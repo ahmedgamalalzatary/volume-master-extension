@@ -2,21 +2,26 @@
 
 A browser extension that controls the volume of any tab from 0% to 200%.
 
+## Firefox Add-ons
+
+This extension is already published on Firefox Add-ons as:
+
+- **Volume-Control-Level**
+- **Author**: `alzatary`
+- **Link**: [https://addons.mozilla.org/en-US/firefox/addon/volume-control-level/](https://addons.mozilla.org/en-US/firefox/addon/volume-control-level/)
+
+If you want the store build, install it directly from Firefox Add-ons.  
+If you are developing locally, use the temporary-install steps below.
+
 ## Features
 
 - **Volume Control**: Adjust volume from 0% to 200%
 - **Fine-grained Control**: Smooth slider with 1% steps
 - **Quick Presets**: One-click buttons for 10%, 20%, 30%, 50%, 100%, 150%, and 200%
 - **Keyboard Shortcuts**: Arrow keys step ±10%
-- **Cross-browser**: Works on both Chrome and Firefox
+- **Firefox-only**: Built and optimized for Firefox
 
 ## Installation
-
-### Chrome
-1. Open `chrome://extensions/`
-2. Enable "Developer mode"
-3. Click "Load unpacked"
-4. Select this extension folder
 
 ### Firefox
 1. Open `about:debugging#/runtime/this-firefox`

@@ -25,7 +25,7 @@ function renderVolume(vol) {
 async function sendVolume(vol) {
     if (tabId === null) return;
     try {
-        await chrome.tabs.sendMessage(tabId, { action: 'set-volume', volume: vol });
+        await browser.tabs.sendMessage(tabId, { action: 'set-volume', volume: VolumeState.normalizeVolume(vol) });
     } catch (_) {
         // Tab may have navigated or content script not ready — ignore
     }
@@ -34,19 +34,21 @@ async function sendVolume(vol) {
 // ─── Initialise ────────────────────────────────────────────────────────────
 
 async function init() {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (!tab) return;
     tabId = tab.id;
 
     try {
-        const res = await chrome.tabs.sendMessage(tabId, { action: 'get-volume' });
-        const vol = (res && res.volume !== null) ? res.volume : 100;
+        const res = await browser.tabs.sendMessage(tabId, { action: 'get-volume' });
+        const vol = (res && typeof res.volume !== 'undefined')
+            ? VolumeState.normalizeVolume(res.volume)
+            : 100;
 
         slider.value = vol;
         renderVolume(vol);
 
         // Show the no-media hint if the page has no media yet
-        if (res && res.volume === null) {
+        if (res && res.hasMedia === false) {
             noMediaMsg.classList.remove('is-hidden');
         }
     } catch (_) {
