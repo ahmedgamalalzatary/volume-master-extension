@@ -12,6 +12,28 @@ let gainNode = null;
 // WeakMap: el -> 'wired' (GainNode connected) | 'skipped' (cross-origin, failed)
 const elementStatus = new WeakMap();
 let desiredVolume = 100;
+const storageKey = VolumeState.keyForOrigin(location.origin);
+const initPromise = (async () => {
+    await loadPersistedVolume();
+    await applyVolume();
+})();
+
+async function loadPersistedVolume() {
+    try {
+        const data = await browser.storage.local.get(storageKey);
+        desiredVolume = VolumeState.normalizeVolume(data[storageKey]);
+    } catch (_) {
+        desiredVolume = 100;
+    }
+}
+
+async function persistVolume(vol) {
+    try {
+        await browser.storage.local.set({ [storageKey]: VolumeState.normalizeVolume(vol) });
+    } catch (_) {
+        // Ignore storage write failures and keep in-memory behavior.
+    }
+}
 
 function canUseWebAudioBoost(el) {
     const src = el.currentSrc || el.src;
@@ -125,17 +147,27 @@ new MutationObserver(() => {
 }).observe(document.documentElement, { subtree: true, childList: true });
 
 function getVolume() {
-    return document.querySelector('audio, video') ? desiredVolume : null;
+    return {
+        volume: desiredVolume,
+        hasMedia: Boolean(document.querySelector('audio, video'))
+    };
 }
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.action === 'set-volume') {
-        desiredVolume = Math.max(0, Math.min(200, msg.volume));
-        applyVolume().finally(() => {
-            sendResponse({ ok: true, volume: desiredVolume });
-        });
+        initPromise
+            .catch(() => { })
+            .then(async () => {
+                desiredVolume = VolumeState.normalizeVolume(msg.volume);
+                await Promise.allSettled([persistVolume(desiredVolume), applyVolume()]);
+                sendResponse({ ok: true, volume: desiredVolume });
+            });
     } else if (msg.action === 'get-volume') {
-        sendResponse({ volume: getVolume() });
+        initPromise
+            .catch(() => { })
+            .then(() => {
+                sendResponse(getVolume());
+            });
     }
     return true;
 });
