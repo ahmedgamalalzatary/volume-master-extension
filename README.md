@@ -32,7 +32,8 @@ If you are developing locally, use the temporary-install steps below.
 
 ```
 ├── manifest.json        # Extension manifest (Manifest V3)
-├── content-script.js    # Volume control logic
+├── volume-controller.js # Unit-tested volume controller core
+├── content-script.js    # Thin browser shell for the controller
 ├── popup/
 │   ├── popup.html       # Extension popup UI
 │   ├── popup.css        # Styling (dark theme)
@@ -54,6 +55,11 @@ This approach includes safeguards to:
 1. Avoid processing cross-origin media without CORS headers, which would permanently mute those elements.
 2. Wait for a user gesture to resume a suspended `AudioContext`, preventing tabs from going silent on page load.
 3. Pick up dynamically added media elements via a debounced `MutationObserver`.
+
+The volume logic is split into:
+
+- `volume-controller.js`: stateful but environment-injected core logic, covered by `node:test`
+- `content-script.js`: browser-only shell that connects DOM, storage, messaging, and lifecycle events
 
 ## Permissions
 

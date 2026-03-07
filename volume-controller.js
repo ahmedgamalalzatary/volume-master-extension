@@ -1,0 +1,219 @@
+'use strict';
+
+(function initVolumeController(root, factory) {
+    const api = factory();
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = api;
+    }
+    root.VolumeController = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function volumeControllerFactory() {
+    function assertRequiredDeps(deps) {
+        if (!deps || typeof deps !== 'object') {
+            throw new TypeError('createVolumeController requires a dependency object');
+        }
+        if (!deps.volumeState || typeof deps.volumeState.keyForOrigin !== 'function' || typeof deps.volumeState.normalizeVolume !== 'function') {
+            throw new TypeError('createVolumeController requires volumeState with keyForOrigin() and normalizeVolume()');
+        }
+        if (typeof deps.origin !== 'string' || deps.origin.length === 0) {
+            throw new TypeError('createVolumeController requires a non-empty origin');
+        }
+        if (typeof deps.getMediaElements !== 'function') {
+            throw new TypeError('createVolumeController requires getMediaElements()');
+        }
+        if (!deps.storage || typeof deps.storage.get !== 'function' || typeof deps.storage.set !== 'function') {
+            throw new TypeError('createVolumeController requires storage.get() and storage.set()');
+        }
+        if (typeof deps.createAudioContext !== 'function') {
+            throw new TypeError('createVolumeController requires createAudioContext()');
+        }
+    }
+
+    function createVolumeController(deps) {
+        assertRequiredDeps(deps);
+
+        const {
+            volumeState,
+            origin,
+            getMediaElements,
+            storage,
+            createAudioContext,
+            scheduleTask = setTimeout,
+            cancelTask = clearTimeout
+        } = deps;
+
+        const storageKey = volumeState.keyForOrigin(origin);
+        let desiredVolume = 100;
+        let audioCtx = null;
+        let gainNode = null;
+        let mutationTaskId = null;
+        let initTask = null;
+        const elementStatus = new WeakMap();
+
+        function ensureContext() {
+            if (audioCtx) return;
+            audioCtx = createAudioContext();
+            gainNode = audioCtx.createGain();
+            gainNode.connect(audioCtx.destination);
+        }
+
+        function getMediaList() {
+            return Array.from(getMediaElements());
+        }
+
+        function canUseWebAudioBoost(el) {
+            const src = el.currentSrc || el.src;
+            if (!src) return false;
+
+            try {
+                const url = new URL(src, origin);
+                if (url.protocol === 'data:') return true;
+                if (url.protocol === 'blob:') return true;
+                if (url.origin === origin) return true;
+                return typeof el.crossOrigin === 'string' && el.crossOrigin.length > 0;
+            } catch (_) {
+                return false;
+            }
+        }
+
+        function wireElement(el) {
+            if (elementStatus.has(el)) return;
+            if (!canUseWebAudioBoost(el)) {
+                elementStatus.set(el, 'skipped');
+                return;
+            }
+
+            try {
+                const src = audioCtx.createMediaElementSource(el);
+                src.connect(gainNode);
+                elementStatus.set(el, 'wired');
+            } catch (_) {
+                elementStatus.set(el, 'skipped');
+            }
+        }
+
+        async function loadPersistedVolume() {
+            try {
+                const data = await storage.get(storageKey);
+                desiredVolume = volumeState.normalizeVolume(data[storageKey]);
+            } catch (_) {
+                desiredVolume = 100;
+            }
+        }
+
+        async function persistVolume(vol) {
+            try {
+                await storage.set({ [storageKey]: volumeState.normalizeVolume(vol) });
+            } catch (_) {
+                // Ignore storage write failures and keep in-memory behavior.
+            }
+        }
+
+        async function applyVolume() {
+            const vol = desiredVolume;
+            const media = getMediaList();
+
+            if (vol <= 100) {
+                if (gainNode) gainNode.gain.value = vol / 100;
+                media.forEach(el => {
+                    if (elementStatus.get(el) === 'wired') {
+                        el.volume = 1.0;
+                    } else {
+                        el.volume = vol / 100;
+                    }
+                });
+                return;
+            }
+
+            ensureContext();
+            gainNode.gain.value = vol / 100;
+
+            if (audioCtx.state !== 'running') {
+                media.forEach(el => {
+                    el.volume = 1.0;
+                });
+                return;
+            }
+
+            media.forEach(el => {
+                wireElement(el);
+                el.volume = 1.0;
+            });
+        }
+
+        async function init() {
+            if (!initTask) {
+                initTask = (async () => {
+                    await loadPersistedVolume();
+                    await applyVolume();
+                })();
+            }
+            await initTask;
+        }
+
+        async function setVolume(value) {
+            desiredVolume = volumeState.normalizeVolume(value);
+            await Promise.allSettled([persistVolume(desiredVolume), applyVolume()]);
+            return { ok: true, volume: desiredVolume };
+        }
+
+        function getVolume() {
+            return {
+                volume: desiredVolume,
+                hasMedia: getMediaList().length > 0
+            };
+        }
+
+        async function handleMediaChange() {
+            await applyVolume();
+        }
+
+        function notifyMediaMutation() {
+            if (mutationTaskId !== null) {
+                cancelTask(mutationTaskId);
+            }
+            mutationTaskId = scheduleTask(async () => {
+                mutationTaskId = null;
+                await handleMediaChange();
+            }, 150);
+            return mutationTaskId;
+        }
+
+        async function resumeIfSuspended() {
+            if (!audioCtx) return false;
+            if (audioCtx.state !== 'suspended' && audioCtx.state !== 'interrupted') return false;
+            try {
+                await audioCtx.resume();
+            } catch (_) {
+                return false;
+            }
+
+            if (audioCtx.state === 'running') {
+                await applyVolume();
+                return true;
+            }
+
+            return false;
+        }
+
+        async function handleMessage(msg) {
+            if (!msg || typeof msg !== 'object') return undefined;
+            if (msg.action === 'set-volume') return setVolume(msg.volume);
+            if (msg.action === 'get-volume') return getVolume();
+            return undefined;
+        }
+
+        return {
+            init,
+            setVolume,
+            getVolume,
+            handleMediaChange,
+            notifyMediaMutation,
+            resumeIfSuspended,
+            handleMessage
+        };
+    }
+
+    return {
+        createVolumeController
+    };
+});
