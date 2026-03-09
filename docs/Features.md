@@ -200,12 +200,20 @@ Allow users to adjust volume by scrolling the mouse wheel over any `<audio>` or 
 
 **Tests to add** (`test/scroll-control.test.js`, new file)
 
+Unit tests for the pure `computeScrollDelta` helper — these only assert the **delta value returned** and must not call `setVolume` or touch the controller:
+
 | # | Test case |
 |---|-----------|
 | 1 | `scroll up returns +5 delta` |
 | 2 | `scroll down returns -5 delta` |
 | 3 | `shift + scroll up returns +1 delta` |
 | 4 | `shift + scroll down returns -1 delta` |
-| 5 | `result is clamped so volume stays within [0, 200]` |
+
+Integration tests for the full scroll-handler flow (the codepath that calls `setVolume`) — these verify clamping through the complete pipeline:
+
+| # | Test case |
+|---|-----------|
+| 5 | `scroll up from 198 clamps final volume to 200` |
+| 6 | `scroll down from 2 clamps final volume to 0` |
 
 ---
