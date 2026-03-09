@@ -32,14 +32,23 @@ If you are developing locally, use the temporary-install steps below.
 
 ```
 ├── manifest.json        # Extension manifest (Manifest V3)
-├── volume-controller.js # Unit-tested volume controller core
-├── content-script.js    # Thin browser shell for the controller
+├── src/
+│   ├── volume-controller.js # Unit-tested volume controller core
+│   ├── volume-state.js      # Volume state management
+│   └── content-script.js   # Browser shell for the controller
 ├── popup/
 │   ├── popup.html       # Extension popup UI
 │   ├── popup.css        # Styling (dark theme)
 │   └── popup.js         # Popup interaction logic
 ├── icons/
 │   └── icon.svg         # Extension icon
+├── test/                # Unit tests
+│   ├── volume-controller.test.js
+│   ├── content-script.test.js
+│   └── volume-state.test.js
+├── docs/                # Documentation
+│   ├── Features.md
+│   └── testingplan.md
 └── README.md
 ```
 
@@ -58,8 +67,9 @@ This approach includes safeguards to:
 
 The volume logic is split into:
 
-- `volume-controller.js`: stateful but environment-injected core logic, covered by `node:test`
-- `content-script.js`: browser-only shell that connects DOM, storage, messaging, and lifecycle events
+- `src/volume-state.js`: Pure state management for volume settings
+- `src/volume-controller.js`: stateful but environment-injected core logic, covered by unit tests
+- `src/content-script.js`: browser-only shell that connects DOM, storage, messaging, and lifecycle events
 
 ## Permissions
 
