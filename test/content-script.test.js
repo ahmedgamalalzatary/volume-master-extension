@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 test('content script uses webkitAudioContext fallback when AudioContext is unavailable', async () => {
-  const modulePath = require.resolve('../content-script.js');
+  const modulePath = require.resolve('../src/content-script.js');
   const originals = {
     window: global.window,
     AudioContext: global.AudioContext,
@@ -75,7 +75,7 @@ test('content script uses webkitAudioContext fallback when AudioContext is unava
   delete require.cache[modulePath];
 
   try {
-    require('../content-script.js');
+    require('../src/content-script.js');
 
     assert.equal(typeof messageListener, 'function');
     const audioContext = capturedDeps.createAudioContext();

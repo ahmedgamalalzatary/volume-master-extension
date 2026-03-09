@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createVolumeController } = require('../volume-controller.js');
+const { createVolumeController } = require('../src/volume-controller.js');
 
 function createStorage(initialValue, options = {}) {
   const store = new Map(Object.entries(initialValue || {}));

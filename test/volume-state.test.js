@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const VolumeState = require('../volume-state.js');
+const VolumeState = require('../src/volume-state.js');
 
 test('builds a stable storage key from origin', () => {
   assert.equal(
