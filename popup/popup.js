@@ -2,23 +2,68 @@
 
 const slider = document.getElementById('volumeSlider');
 const valueEl = document.getElementById('volumeValue');
+const labelEl = document.getElementById('volumeLabel');
 const noMediaMsg = document.getElementById('noMediaMsg');
+const muteBtn = document.getElementById('muteBtn');
+const resetBtn = document.getElementById('resetBtn');
+const muteIcon = document.getElementById('muteIcon');
+const mutedIcon = document.getElementById('mutedIcon');
+const mediaDot = document.getElementById('mediaDot');
+const mediaCountEl = document.getElementById('mediaCount');
 const quickBtns = document.querySelectorAll('.quick-btn');
 
 let tabId = null;
+let isMuted = false;
+let preMuteVolume = 100;
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-/** Update the big number display. */
+/** Descriptive label for the current volume. */
+function volumeLabel(vol) {
+    if (vol === 0) return 'Muted';
+    if (vol <= 30) return 'Quiet';
+    if (vol <= 70) return 'Moderate';
+    if (vol <= 100) return 'Normal';
+    if (vol <= 150) return 'Boosted';
+    return 'Max boost';
+}
+
+/** Update the big number display, label, and button highlights. */
 function renderVolume(vol) {
     valueEl.textContent = vol;
-    // Color feedback: normal ≤100, warning 101–150, danger 151–200
-    valueEl.classList.toggle('is-warning', vol > 100 && vol <= 150);
-    valueEl.classList.toggle('is-danger', vol > 150);
+    labelEl.textContent = isMuted ? 'Muted' : volumeLabel(vol);
+
+    // Color feedback
+    valueEl.classList.toggle('is-muted', isMuted || vol === 0);
+    valueEl.classList.toggle('is-warning', !isMuted && vol > 100 && vol <= 150);
+    valueEl.classList.toggle('is-danger', !isMuted && vol > 150);
+
+    // ARIA live value
+    slider.setAttribute('aria-valuenow', vol);
+
     // Highlight matching quick-btn
     quickBtns.forEach(btn => {
         btn.classList.toggle('is-active', parseInt(btn.dataset.vol, 10) === vol);
     });
+}
+
+/** Update the mute button icon state. */
+function renderMuteState() {
+    muteBtn.classList.toggle('is-active', isMuted);
+    muteIcon.classList.toggle('is-hidden', isMuted);
+    mutedIcon.classList.toggle('is-hidden', !isMuted);
+    muteBtn.setAttribute('aria-label', isMuted ? 'Unmute volume' : 'Mute volume');
+    muteBtn.title = isMuted ? 'Unmute' : 'Mute';
+}
+
+/** Update the media count display. */
+function renderMediaCount(count) {
+    if (typeof count === 'number') {
+        mediaCountEl.textContent = count === 0
+            ? 'No media'
+            : `${count} media`;
+        mediaDot.classList.toggle('has-media', count > 0);
+    }
 }
 
 /** Send a volume to the content script in the active tab. */
@@ -29,6 +74,13 @@ async function sendVolume(vol) {
     } catch (_) {
         // Tab may have navigated or content script not ready — ignore
     }
+}
+
+/** Apply a volume value to all UI + send to content script. */
+function applyVolume(vol) {
+    slider.value = vol;
+    renderVolume(vol);
+    sendVolume(vol);
 }
 
 // ─── Initialise ────────────────────────────────────────────────────────────
@@ -47,6 +99,13 @@ async function init() {
         slider.value = vol;
         renderVolume(vol);
 
+        // Media count
+        if (res && typeof res.mediaCount === 'number') {
+            renderMediaCount(res.mediaCount);
+        } else if (res) {
+            renderMediaCount(res.hasMedia ? 1 : 0);
+        }
+
         // Show the no-media hint if the page has no media yet
         if (res && res.hasMedia === false) {
             noMediaMsg.classList.remove('is-hidden');
@@ -55,17 +114,21 @@ async function init() {
         // Content script not reachable (e.g. about:, moz-extension:, pdf pages)
         slider.disabled = true;
         quickBtns.forEach(b => (b.disabled = true));
+        muteBtn.disabled = true;
+        resetBtn.disabled = true;
         noMediaMsg.classList.remove('is-hidden');
         noMediaMsg.textContent = 'Volume Control cannot run on this page.';
     }
 }
 
-// ─── Slider step-snap logic ────────────────────────────────────────────────
-// 0–10  → step 1%   (fine control for quiet volumes)
 // ─── Slider ────────────────────────────────────────────────────────────────
 
 slider.addEventListener('input', () => {
     const vol = parseInt(slider.value, 10);
+    if (isMuted) {
+        isMuted = false;
+        renderMuteState();
+    }
     renderVolume(vol);
     sendVolume(vol);
 });
@@ -75,26 +138,73 @@ slider.addEventListener('input', () => {
 quickBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         const vol = parseInt(btn.dataset.vol, 10);
-        slider.value = vol;
-        renderVolume(vol);
-        sendVolume(vol);
+        if (isMuted) {
+            isMuted = false;
+            renderMuteState();
+        }
+        applyVolume(vol);
     });
 });
 
+// ─── Mute / Unmute ─────────────────────────────────────────────────────────
+
+muteBtn.addEventListener('click', () => {
+    if (isMuted) {
+        // Unmute — restore previous volume
+        isMuted = false;
+        renderMuteState();
+        applyVolume(preMuteVolume);
+    } else {
+        // Mute — save current and set to 0
+        preMuteVolume = parseInt(slider.value, 10) || 100;
+        isMuted = true;
+        renderMuteState();
+        applyVolume(0);
+    }
+});
+
+// ─── Reset ─────────────────────────────────────────────────────────────────
+
+resetBtn.addEventListener('click', () => {
+    if (isMuted) {
+        isMuted = false;
+        renderMuteState();
+    }
+    applyVolume(100);
+});
+
 // ─── Keyboard shortcuts ────────────────────────────────────────────────────
-// ↑/→ → +10%    ↓/← → -10%
+// Arrow keys: ±1%     Shift + Arrow: ±10%
 
 document.addEventListener('keydown', e => {
     if (e.target !== document.body && e.target !== document.documentElement) return;
+
+    const step = e.shiftKey ? 10 : 1;
     const current = parseInt(slider.value, 10);
+    let vol = null;
+
     if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
         e.preventDefault();
-        const vol = Math.min(200, current + 10);
-        slider.value = vol; renderVolume(vol); sendVolume(vol);
+        vol = Math.min(200, current + step);
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
         e.preventDefault();
-        const vol = Math.max(0, current - 10);
-        slider.value = vol; renderVolume(vol); sendVolume(vol);
+        vol = Math.max(0, current - step);
+    } else if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        muteBtn.click();
+        return;
+    } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        resetBtn.click();
+        return;
+    }
+
+    if (vol !== null) {
+        if (isMuted) {
+            isMuted = false;
+            renderMuteState();
+        }
+        applyVolume(vol);
     }
 });
 

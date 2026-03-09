@@ -120,3 +120,92 @@ A `{ action: 'fade-volume', target, steps, intervalMs }` message that gradually 
 - `fade-volume message routes to fadeToVolume with provided options`
 - `fadeToVolume uses default steps and intervalMs when options are omitted`
 - `fadeToVolume clamps target to [0, 200] via normalizeVolume`
+
+---
+
+## 9. Badge Volume Display
+
+Show the current volume level as text on the extension's toolbar icon badge so users can see the active volume at a glance without opening the popup.
+
+**Behaviour**
+
+- When volume is set or restored, send a message to the background script with the current volume integer.
+- The background script calls `browser.action.setBadgeText({ text: String(vol), tabId })`.
+- Badge background color follows the same thresholds as the popup display: default accent for ≤ 100, warning for 101–150, danger for 151+.
+- When no content script is active on a tab, the badge is cleared.
+
+**Files to change**
+
+- **New file** `src/background.js` — listen for `update-badge` messages; call badge API.
+- `manifest.json` — add `"background": { "scripts": ["src/background.js"] }`.
+- `src/volume-controller.js` — after every `setVolume` / `init` that resolves, emit an `update-badge` message via a new injected `notifyBadge(vol)` dependency.
+- `src/content-script.js` — inject `notifyBadge` using `browser.runtime.sendMessage`.
+
+**Tests to add** (`test/background.test.js`, new file)
+
+| # | Test case |
+|---|-----------|
+| 1 | `update-badge sets badge text to the provided volume string` |
+| 2 | `update-badge sets warning color when volume > 100 and ≤ 150` |
+| 3 | `update-badge sets danger color when volume > 150` |
+| 4 | `update-badge sets default accent color when volume ≤ 100` |
+| 5 | `update-badge clears badge text when volume is undefined` |
+
+---
+
+## 10. Volume Lock
+
+Prevent websites from programmatically overriding the volume on media elements. Some sites reset `el.volume` when ads play or on seek events, undoing the user's chosen level.
+
+**Behaviour**
+
+- When enabled, attach an `Object.defineProperty` override on each wired media element's `volume` setter so any external write is intercepted and silently replaced with the controller's `desiredVolume / 100`.
+- Toggled via a new `{ action: 'toggle-lock' }` message. State is kept in-memory (not persisted).
+- When locked, `getVolume()` / `getState()` responses include `isLocked: true`.
+- Unlocking removes the property override and re-applies the current volume normally.
+
+**Files to change**
+
+- `src/volume-controller.js` — add `lockVolume()`, `unlockVolume()`, `isLocked()` methods; override `volume` setter inside `applyVolume` when lock is active; handle `toggle-lock` in `handleMessage`.
+
+**Tests to add** (`test/volume-controller.test.js`)
+
+| # | Test case |
+|---|-----------|
+| 1 | `lockVolume prevents external volume writes from changing effective volume` |
+| 2 | `unlockVolume restores normal volume setter behaviour` |
+| 3 | `toggle-lock message toggles the lock state and returns current isLocked` |
+| 4 | `setVolume while locked still updates desiredVolume and re-applies the lock` |
+| 5 | `getVolume includes isLocked field reflecting current lock state` |
+
+---
+
+## 11. Scroll Wheel Volume Control
+
+Allow users to adjust volume by scrolling the mouse wheel over any `<audio>` or `<video>` element on the page.
+
+**Behaviour**
+
+- A `wheel` event listener is attached to `document` (capture phase).
+- Only fires when the `event.target` is, or is inside, an `<audio>` or `<video>` element.
+- Scroll up → +5 %, scroll down → −5 %, clamped to `[0, 200]`.
+- Shift + scroll changes the step to ±1 % for fine control.
+- Calls `setVolume()` on the controller and sends an `update-badge` notification.
+- The feature is enabled by default and can be toggled via a stored preference `vc:scrollControl`.
+
+**Files to change**
+
+- `src/content-script.js` — attach the `wheel` listener after init; read preference from storage.
+- **New file** `src/scroll-control.js` — pure helper: `computeScrollDelta(event)` returns the volume delta given a `WheelEvent`.
+
+**Tests to add** (`test/scroll-control.test.js`, new file)
+
+| # | Test case |
+|---|-----------|
+| 1 | `scroll up returns +5 delta` |
+| 2 | `scroll down returns -5 delta` |
+| 3 | `shift + scroll up returns +1 delta` |
+| 4 | `shift + scroll down returns -1 delta` |
+| 5 | `result is clamped so volume stays within [0, 200]` |
+
+---
