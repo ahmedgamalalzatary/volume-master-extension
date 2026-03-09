@@ -156,7 +156,8 @@ muteBtn.addEventListener('click', () => {
         applyVolume(preMuteVolume);
     } else {
         // Mute — save current and set to 0
-        preMuteVolume = parseInt(slider.value, 10) || 100;
+        const currentVol = parseInt(slider.value, 10);
+        preMuteVolume = Number.isNaN(currentVol) ? 100 : currentVol;
         isMuted = true;
         renderMuteState();
         applyVolume(0);
