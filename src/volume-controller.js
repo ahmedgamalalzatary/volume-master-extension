@@ -43,6 +43,8 @@
 
         const storageKey = volumeState.keyForOrigin(origin);
         let desiredVolume = 100;
+        let muted = false;
+        let preMuteVolume = 100;
         let audioCtx = null;
         let gainNode = null;
         let mutationTaskId = null;
@@ -109,7 +111,8 @@
         }
 
         async function applyVolume() {
-            const vol = desiredVolume;
+            const effectiveVolume = muted ? 0 : desiredVolume;
+            const vol = effectiveVolume;
             const media = getMediaList();
 
             if (vol <= 100) {
@@ -151,7 +154,12 @@
         }
 
         async function setVolume(value) {
-            desiredVolume = volumeState.normalizeVolume(value);
+            const normalized = volumeState.normalizeVolume(value);
+            desiredVolume = normalized;
+            if (muted) {
+                preMuteVolume = normalized;
+                return { ok: true, volume: normalized };
+            }
             await Promise.allSettled([persistVolume(desiredVolume), applyVolume()]);
             return { ok: true, volume: desiredVolume };
         }
@@ -159,8 +167,30 @@
         function getVolume() {
             return {
                 volume: desiredVolume,
-                hasMedia: getMediaList().length > 0
+                hasMedia: getMediaList().length > 0,
+                isMuted: muted,
+                preMuteVolume: preMuteVolume
             };
+        }
+
+        async function mute() {
+            if (muted) return { ok: true, volume: 0, isMuted: true };
+            preMuteVolume = desiredVolume;
+            muted = true;
+            await applyVolume();
+            return { ok: true, volume: 0, isMuted: true };
+        }
+
+        async function unmute() {
+            if (!muted) return { ok: true, volume: desiredVolume, isMuted: false };
+            muted = false;
+            desiredVolume = preMuteVolume;
+            await applyVolume();
+            return { ok: true, volume: desiredVolume, isMuted: false };
+        }
+
+        function isMuted() {
+            return muted;
         }
 
         async function handleMediaChange() {
@@ -199,6 +229,9 @@
             if (!msg || typeof msg !== 'object') return undefined;
             if (msg.action === 'set-volume') return setVolume(msg.volume);
             if (msg.action === 'get-volume') return getVolume();
+            if (msg.action === 'mute') return mute();
+            if (msg.action === 'unmute') return unmute();
+            if (msg.action === 'toggle-mute') return muted ? unmute() : mute();
             return undefined;
         }
 
@@ -206,6 +239,9 @@
             init,
             setVolume,
             getVolume,
+            mute,
+            unmute,
+            isMuted,
             handleMediaChange,
             notifyMediaMutation,
             resumeIfSuspended,

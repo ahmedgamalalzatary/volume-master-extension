@@ -97,7 +97,14 @@ async function init() {
             : 100;
 
         slider.value = vol;
+        
+        if (res && typeof res.isMuted === 'boolean') {
+            isMuted = res.isMuted;
+            preMuteVolume = typeof res.preMuteVolume === 'number' ? res.preMuteVolume : 100;
+        }
+        
         renderVolume(vol);
+        renderMuteState();
 
         // Media count
         if (res && typeof res.mediaCount === 'number') {
@@ -123,10 +130,13 @@ async function init() {
 
 // ─── Slider ────────────────────────────────────────────────────────────────
 
-slider.addEventListener('input', () => {
+slider.addEventListener('input', async () => {
     const vol = parseInt(slider.value, 10);
     if (isMuted) {
         isMuted = false;
+        try {
+            await browser.tabs.sendMessage(tabId, { action: 'unmute' });
+        } catch (_) {}
         renderMuteState();
     }
     renderVolume(vol);
@@ -136,10 +146,13 @@ slider.addEventListener('input', () => {
 // ─── Quick-set buttons ─────────────────────────────────────────────────────
 
 quickBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
         const vol = parseInt(btn.dataset.vol, 10);
         if (isMuted) {
             isMuted = false;
+            try {
+                await browser.tabs.sendMessage(tabId, { action: 'unmute' });
+            } catch (_) {}
             renderMuteState();
         }
         applyVolume(vol);
@@ -148,27 +161,35 @@ quickBtns.forEach(btn => {
 
 // ─── Mute / Unmute ─────────────────────────────────────────────────────────
 
-muteBtn.addEventListener('click', () => {
-    if (isMuted) {
-        // Unmute — restore previous volume
-        isMuted = false;
-        renderMuteState();
-        applyVolume(preMuteVolume);
-    } else {
-        // Mute — save current and set to 0
-        const currentVol = parseInt(slider.value, 10);
-        preMuteVolume = Number.isNaN(currentVol) ? 100 : currentVol;
-        isMuted = true;
-        renderMuteState();
-        applyVolume(0);
+muteBtn.addEventListener('click', async () => {
+    if (tabId === null) return;
+    try {
+        const res = await browser.tabs.sendMessage(tabId, { action: 'toggle-mute' });
+        if (res && typeof res.isMuted === 'boolean') {
+            isMuted = res.isMuted;
+            preMuteVolume = typeof res.volume === 'number' ? res.volume : 100;
+            renderMuteState();
+            if (isMuted) {
+                slider.value = 0;
+                renderVolume(preMuteVolume);
+            } else {
+                slider.value = preMuteVolume;
+                renderVolume(preMuteVolume);
+            }
+        }
+    } catch (_) {
+        // Tab may have navigated or content script not ready — ignore
     }
 });
 
 // ─── Reset ─────────────────────────────────────────────────────────────────
 
-resetBtn.addEventListener('click', () => {
+resetBtn.addEventListener('click', async () => {
     if (isMuted) {
         isMuted = false;
+        try {
+            await browser.tabs.sendMessage(tabId, { action: 'unmute' });
+        } catch (_) {}
         renderMuteState();
     }
     applyVolume(100);
@@ -177,7 +198,7 @@ resetBtn.addEventListener('click', () => {
 // ─── Keyboard shortcuts ────────────────────────────────────────────────────
 // Arrow keys: ±1%     Shift + Arrow: ±10%
 
-document.addEventListener('keydown', e => {
+document.addEventListener('keydown', async e => {
     if (e.target !== document.body && e.target !== document.documentElement) return;
 
     const step = e.shiftKey ? 10 : 1;
@@ -203,6 +224,9 @@ document.addEventListener('keydown', e => {
     if (vol !== null) {
         if (isMuted) {
             isMuted = false;
+            try {
+                await browser.tabs.sendMessage(tabId, { action: 'unmute' });
+            } catch (_) {}
             renderMuteState();
         }
         applyVolume(vol);
