@@ -13,46 +13,96 @@
 
         <!-- Header -->
         <header class="header">
-            <img src="../icons/icon.svg" class="header__logo" alt="">
+            <img src="../icons/icon.svg" class="header__logo" alt="Volume Control icon">
             <h1 class="header__title">Volume Control</h1>
+            <div class="header__actions">
+                <button id="muteBtn" class="icon-btn" title="Mute / Unmute" aria-label="Mute volume">
+                    <svg id="muteIcon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path d="M2.5 6h2l3.5-3v10L4.5 10h-2V6z" fill="currentColor" />
+                        <path d="M10.5 5.5c1.5 1 1.5 4 0 5" stroke="currentColor" stroke-width="1.5"
+                            stroke-linecap="round" />
+                        <path d="M12.5 3.5c2.5 2 2.5 7 0 9" stroke="currentColor" stroke-width="1.5"
+                            stroke-linecap="round" opacity="0.5" />
+                    </svg>
+                    <svg id="mutedIcon" class="is-hidden" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path d="M2.5 6h2l3.5-3v10L4.5 10h-2V6z" fill="currentColor" />
+                        <line x1="10" y1="5.5" x2="15" y2="10.5" stroke="currentColor" stroke-width="1.5"
+                            stroke-linecap="round" />
+                        <line x1="15" y1="5.5" x2="10" y2="10.5" stroke="currentColor" stroke-width="1.5"
+                            stroke-linecap="round" />
+                    </svg>
+                </button>
+                <button id="resetBtn" class="icon-btn" title="Reset to 100%" aria-label="Reset volume to 100%">
+                    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path d="M3.5 8a4.5 4.5 0 1 1 1 2.8" stroke="currentColor" stroke-width="1.5"
+                            stroke-linecap="round" />
+                        <path d="M3.5 12V8.5H7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                </button>
+            </div>
         </header>
 
-        <!-- Volume display -->
-        <div class="volume-display">
-            <span id="volumeValue" class="volume-display__value">100</span>
-            <span class="volume-display__unit">%</span>
-        </div>
+        <!-- Main content -->
+        <main>
 
-        <!-- Slider -->
-        <div class="slider-wrap">
-            <input type="range" id="volumeSlider" class="slider" min="0" max="200" value="100" step="1">
-            <div class="slider-labels">
-                <span>0%</span>
-                <span>100%</span>
-                <span>200%</span>
+            <!-- Volume display -->
+            <div class="volume-display">
+                <span id="volumeValue" class="volume-display__value">100</span>
+                <span class="volume-display__unit">%</span>
+                <span id="volumeLabel" class="volume-display__label">Normal</span>
             </div>
-        </div>
 
-        <!-- Quick-set buttons -->
-        <div class="quick-btns">
-            <button class="quick-btn" data-vol="10">10%</button>
-            <button class="quick-btn" data-vol="20">20%</button>
-            <button class="quick-btn" data-vol="30">30%</button>
-            <button class="quick-btn" data-vol="50">50%</button>
-            <button class="quick-btn" data-vol="100">100%</button>
-            <button class="quick-btn" data-vol="150">150%</button>
-            <button class="quick-btn" data-vol="200">200%</button>
-        </div>
+            <!-- Slider -->
+            <div class="slider-wrap">
+                <input type="range" id="volumeSlider" class="slider" min="0" max="200" value="100" step="1"
+                    aria-label="Volume level" aria-valuemin="0" aria-valuemax="200" aria-valuenow="100">
+                <div class="slider-labels">
+                    <span>0%</span>
+                    <span>100%</span>
+                    <span>200%</span>
+                </div>
+                <div class="slider-boost-hint">
+                    <span class="slider-boost-hint__dot"></span>
+                    <span>Above 100% boosts audio</span>
+                </div>
+            </div>
 
-        <!-- No-media notice -->
-        <p id="noMediaMsg" class="no-media is-hidden">
-            No audio or video detected on this tab yet.<br>
-            Set a volume — it will apply when media starts.
-        </p>
+            <!-- Quick-set buttons -->
+            <div class="quick-btns">
+                <button class="quick-btn" data-vol="10">10%</button>
+                <button class="quick-btn" data-vol="25">25%</button>
+                <button class="quick-btn" data-vol="50">50%</button>
+                <button class="quick-btn" data-vol="75">75%</button>
+                <button class="quick-btn" data-vol="100">100%</button>
+                <button class="quick-btn" data-vol="125">125%</button>
+                <button class="quick-btn" data-vol="150">150%</button>
+                <button class="quick-btn" data-vol="200">200%</button>
+            </div>
+
+            <!-- No-media notice -->
+            <p id="noMediaMsg" class="no-media is-hidden">
+                No audio or video detected on this tab yet.<br>
+                Set a volume — it will apply when media starts.
+            </p>
+
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer__media">
+                <span id="mediaDot" class="footer__media-dot"></span>
+                <span id="mediaCount">No media</span>
+            </div>
+            <div class="footer__keys">
+                <kbd class="kbd">↑↓</kbd> ±1
+                <kbd class="kbd">⇧</kbd> ±10
+            </div>
+        </footer>
 
     </div>
 
-    <script src="../volume-state.js"></script>
+    <script src="../src/volume-state.js"></script>
     <script src="popup.js"></script>
 </body>
 
