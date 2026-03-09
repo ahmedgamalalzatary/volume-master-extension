@@ -267,7 +267,7 @@ test('getVolume reports current volume and media presence', async () => {
 
   await controller.init();
 
-  assert.deepEqual(controller.getVolume(), { volume: 100, hasMedia: false });
+  assert.deepEqual(controller.getVolume(), { volume: 100, hasMedia: false, isMuted: false, preMuteVolume: 100 });
 });
 
 test('handleMessage routes get-volume and set-volume messages', async () => {
@@ -279,7 +279,7 @@ test('handleMessage routes get-volume and set-volume messages', async () => {
   const getResponse = await controller.handleMessage({ action: 'get-volume' });
   const setResponse = await controller.handleMessage({ action: 'set-volume', volume: 45 });
 
-  assert.deepEqual(getResponse, { volume: 100, hasMedia: true });
+  assert.deepEqual(getResponse, { volume: 100, hasMedia: true, isMuted: false, preMuteVolume: 100 });
   assert.deepEqual(setResponse, { ok: true, volume: 45 });
   assert.equal(media[0].volume, 0.45);
 });
@@ -362,4 +362,115 @@ test('init is idempotent and only loads persisted state once', async () => {
   assert.equal(storage.writes.length, 0);
   assert.equal(audio.contextCount, 0);
   assert.equal(controller.getVolume().volume, 60);
+});
+
+// ─── Mute / Unmute ───────────────────────────────────────────────────────────
+
+test('mute() sets volume to 0 and retains pre-mute level', async () => {
+  const media = [createMedia()];
+  const { controller, storage } = createController({ media, persistedVolume: 50 });
+
+  await controller.init();
+  const result = await controller.mute();
+
+  assert.deepEqual(result, { ok: true, volume: 0, isMuted: true });
+  assert.equal(media[0].volume, 0);
+  assert.equal(controller.getVolume().isMuted, true);
+  assert.equal(controller.getVolume().preMuteVolume, 50);
+  assert.equal(controller.getVolume().volume, 50);
+  assert.equal(storage.writes.length, 0);
+});
+
+test('unmute() restores pre-mute volume without touching storage', async () => {
+  const media = [createMedia()];
+  const { controller, storage } = createController({ media, persistedVolume: 50 });
+
+  await controller.init();
+  await controller.mute();
+  const result = await controller.unmute();
+
+  assert.deepEqual(result, { ok: true, volume: 50, isMuted: false });
+  assert.equal(media[0].volume, 0.5);
+  assert.equal(controller.getVolume().isMuted, false);
+  assert.equal(controller.getVolume().volume, 50);
+  assert.equal(storage.writes.length, 0);
+});
+
+test('calling mute() twice does not overwrite the saved pre-mute level', async () => {
+  const media = [createMedia()];
+  const { controller } = createController({ media, persistedVolume: 75 });
+
+  await controller.init();
+  await controller.mute();
+  await controller.mute();
+
+  assert.equal(controller.getVolume().preMuteVolume, 75);
+  assert.equal(controller.getVolume().isMuted, true);
+});
+
+test('setVolume() while muted updates the pre-mute level, not the active gain', async () => {
+  const media = [createMedia()];
+  const { controller, storage } = createController({ media, persistedVolume: 40 });
+
+  await controller.init();
+  await controller.mute();
+  const result = await controller.setVolume(80);
+
+  assert.deepEqual(result, { ok: true, volume: 80 });
+  assert.equal(media[0].volume, 0);
+  assert.equal(controller.getVolume().volume, 80);
+  assert.equal(controller.getVolume().preMuteVolume, 80);
+  assert.equal(controller.getVolume().isMuted, true);
+  assert.equal(storage.writes.length, 0);
+});
+
+test('unmute() after setVolume while muted applies the new volume', async () => {
+  const media = [createMedia()];
+  const { controller, storage } = createController({ media, persistedVolume: 40 });
+
+  await controller.init();
+  await controller.mute();
+  await controller.setVolume(80);
+  await controller.unmute();
+
+  assert.equal(media[0].volume, 0.8);
+  assert.equal(controller.getVolume().volume, 80);
+  assert.equal(controller.getVolume().isMuted, false);
+  assert.equal(storage.writes.length, 0);
+});
+
+test('handleMessage routes mute, unmute, and toggle-mute actions', async () => {
+  const media = [createMedia()];
+  const { controller } = createController({ media, persistedVolume: 60 });
+
+  await controller.init();
+
+  const muteResult = await controller.handleMessage({ action: 'mute' });
+  assert.deepEqual(muteResult, { ok: true, volume: 0, isMuted: true });
+  assert.equal(media[0].volume, 0);
+
+  const unmuteResult = await controller.handleMessage({ action: 'unmute' });
+  assert.deepEqual(unmuteResult, { ok: true, volume: 60, isMuted: false });
+  assert.equal(media[0].volume, 0.6);
+
+  const toggleResult1 = await controller.handleMessage({ action: 'toggle-mute' });
+  assert.deepEqual(toggleResult1, { ok: true, volume: 0, isMuted: true });
+
+  const toggleResult2 = await controller.handleMessage({ action: 'toggle-mute' });
+  assert.deepEqual(toggleResult2, { ok: true, volume: 60, isMuted: false });
+});
+
+test('getVolume includes isMuted and preMuteVolume fields', async () => {
+  const media = [createMedia()];
+  const { controller } = createController({ media, persistedVolume: 55 });
+
+  await controller.init();
+  const state1 = controller.getVolume();
+
+  assert.deepEqual(state1, { volume: 55, hasMedia: true, isMuted: false, preMuteVolume: 100 });
+
+  await controller.mute();
+  const state2 = controller.getVolume();
+
+  assert.deepEqual(state2, { volume: 55, hasMedia: true, isMuted: true, preMuteVolume: 55 });
 });
