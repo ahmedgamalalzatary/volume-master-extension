@@ -28,6 +28,7 @@
          "js": [
             "src/volume-state.js",
             "src/volume-controller.js",
+            "src/scroll-control.js",
             "src/content-script.js"
          ],
          "run_at": "document_idle"
@@ -50,5 +51,10 @@
             ]
          }
       }
+   },
+   "background": {
+      "scripts": [
+         "src/background.js"
+      ]
    }
 }

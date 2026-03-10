@@ -91,7 +91,7 @@ async function init() {
     tabId = tab.id;
 
     try {
-        const res = await browser.tabs.sendMessage(tabId, { action: 'get-volume' });
+        const res = await browser.tabs.sendMessage(tabId, { action: 'get-state' });
         const vol = (res && typeof res.volume !== 'undefined')
             ? VolumeState.normalizeVolume(res.volume)
             : 100;

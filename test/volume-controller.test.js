@@ -100,7 +100,8 @@ function createController({
   origin = 'https://example.com',
   persistedVolume,
   storageOptions,
-  audioOptions
+  audioOptions,
+  autoRunScheduled = false
 } = {}) {
   const storageKey = `vc:origin:${origin}`;
   const storage = createStorage(
@@ -130,7 +131,11 @@ function createController({
     scheduleTask(callback, delay) {
       const id = nextTimerId;
       nextTimerId += 1;
-      scheduledTasks.push({ id, callback, delay, cleared: false });
+      const task = { id, callback, delay, cleared: false };
+      scheduledTasks.push(task);
+      if (autoRunScheduled) {
+        Promise.resolve().then(() => callback());
+      }
       return id;
     },
     cancelTask(id) {
@@ -274,7 +279,7 @@ test('getVolume reports current volume and media presence', async () => {
 
   await controller.init();
 
-  assert.deepEqual(controller.getVolume(), { volume: 100, hasMedia: false, mediaCount: 0, isMuted: false, preMuteVolume: 100 });
+  assert.deepEqual(controller.getVolume(), { volume: 100, hasMedia: false, mediaCount: 0, isMuted: false, preMuteVolume: 100, isLocked: false });
 });
 
 test('handleMessage routes get-volume and set-volume messages', async () => {
@@ -286,7 +291,7 @@ test('handleMessage routes get-volume and set-volume messages', async () => {
   const getResponse = await controller.handleMessage({ action: 'get-volume' });
   const setResponse = await controller.handleMessage({ action: 'set-volume', volume: 45 });
 
-  assert.deepEqual(getResponse, { volume: 100, hasMedia: true, mediaCount: 1, isMuted: false, preMuteVolume: 100 });
+  assert.deepEqual(getResponse, { volume: 100, hasMedia: true, mediaCount: 1, isMuted: false, preMuteVolume: 100, isLocked: false });
   assert.deepEqual(setResponse, { ok: true, volume: 45 });
   assert.equal(media[0].volume, 0.45);
 });
@@ -474,12 +479,12 @@ test('getVolume includes isMuted and preMuteVolume fields', async () => {
   await controller.init();
   const state1 = controller.getVolume();
 
-  assert.deepEqual(state1, { volume: 55, hasMedia: true, mediaCount: 1, isMuted: false, preMuteVolume: 100 });
+  assert.deepEqual(state1, { volume: 55, hasMedia: true, mediaCount: 1, isMuted: false, preMuteVolume: 100, isLocked: false });
 
   await controller.mute();
   const state2 = controller.getVolume();
 
-  assert.deepEqual(state2, { volume: 55, hasMedia: true, mediaCount: 1, isMuted: true, preMuteVolume: 55 });
+  assert.deepEqual(state2, { volume: 55, hasMedia: true, mediaCount: 1, isMuted: true, preMuteVolume: 55, isLocked: false });
 });
 
 // ─── Reset Volume ────────────────────────────────────────────────────────────
@@ -604,4 +609,143 @@ test('getVolume mediaCount reflects elements added between calls', async () => {
 
   media.length = 0;
   assert.equal(controller.getVolume().mediaCount, 0);
+});
+
+test('step-volume increments desiredVolume by the given positive delta', async () => {
+  const media = [createMedia()];
+  const { controller } = createController({ media, persistedVolume: 100 });
+
+  await controller.init();
+  const res = await controller.handleMessage({ action: 'step-volume', delta: 15 });
+
+  assert.deepEqual(res, { ok: true, volume: 115 });
+  assert.equal(controller.getVolume().volume, 115);
+});
+
+test('step-volume decrements desiredVolume by the given negative delta', async () => {
+  const { controller } = createController({ persistedVolume: 100 });
+  await controller.init();
+  await controller.handleMessage({ action: 'step-volume', delta: -30 });
+  assert.equal(controller.getVolume().volume, 70);
+});
+
+test('step-volume clamps the result to [0, 200]', async () => {
+  const { controller } = createController({ persistedVolume: 190 });
+  await controller.init();
+  await controller.handleMessage({ action: 'step-volume', delta: 25 });
+  assert.equal(controller.getVolume().volume, 200);
+  await controller.handleMessage({ action: 'step-volume', delta: -500 });
+  assert.equal(controller.getVolume().volume, 0);
+});
+
+test('step-volume with non-finite delta leaves volume unchanged', async () => {
+  const { controller } = createController({ persistedVolume: 90 });
+  await controller.init();
+  const res = await controller.handleMessage({ action: 'step-volume', delta: Infinity });
+  assert.deepEqual(res, { ok: true, volume: 90 });
+  assert.equal(controller.getVolume().volume, 90);
+});
+
+test('get-state returns volume, hasMedia, isMuted and preMuteVolume when not muted', async () => {
+  const media = [createMedia()];
+  const { controller } = createController({ media, persistedVolume: 66 });
+  await controller.init();
+  const res = await controller.handleMessage({ action: 'get-state' });
+  assert.deepEqual(res, { volume: 66, hasMedia: true, mediaCount: 1, isMuted: false, preMuteVolume: 100, isLocked: false });
+});
+
+test('get-state reflects muted=true and correct preMuteVolume after muting', async () => {
+  const { controller } = createController({ persistedVolume: 80 });
+  await controller.init();
+  await controller.mute();
+  const res = await controller.handleMessage({ action: 'get-state' });
+  assert.equal(res.isMuted, true);
+  assert.equal(res.preMuteVolume, 80);
+});
+
+test('get-state reflects isMuted=false after unmuting', async () => {
+  const { controller } = createController({ persistedVolume: 80 });
+  await controller.init();
+  await controller.mute();
+  await controller.unmute();
+  const res = await controller.handleMessage({ action: 'get-state' });
+  assert.equal(res.isMuted, false);
+});
+
+test('fadeToVolume transitions to target volume and persists the final value', async () => {
+  const media = [createMedia()];
+  const { controller, storage, storageKey } = createController({ media, persistedVolume: 100, autoRunScheduled: true });
+  await controller.init();
+  const res = await controller.fadeToVolume(140, { steps: 4, intervalMs: 1 });
+  assert.deepEqual(res, { ok: true, volume: 140 });
+  assert.equal(controller.getVolume().volume, 140);
+  assert.deepEqual(storage.writes.at(-1), { [storageKey]: 140 });
+});
+
+test('fade-volume message routes to fadeToVolume with provided options', async () => {
+  const { controller } = createController({ persistedVolume: 100, autoRunScheduled: true });
+  await controller.init();
+  const res = await controller.handleMessage({ action: 'fade-volume', target: 120, steps: 2, intervalMs: 1 });
+  assert.deepEqual(res, { ok: true, volume: 120 });
+});
+
+test('fadeToVolume uses default steps and intervalMs when options are omitted', async () => {
+  const { controller } = createController({ persistedVolume: 100, autoRunScheduled: true });
+  await controller.init();
+  const res = await controller.fadeToVolume(110);
+  assert.deepEqual(res, { ok: true, volume: 110 });
+});
+
+test('fadeToVolume clamps target to [0, 200] via normalizeVolume', async () => {
+  const { controller } = createController({ persistedVolume: 100, autoRunScheduled: true });
+  await controller.init();
+  await controller.fadeToVolume(999, { steps: 1, intervalMs: 1 });
+  assert.equal(controller.getVolume().volume, 200);
+});
+
+test('lockVolume prevents external volume writes from changing effective volume', async () => {
+  const media = [createMedia()];
+  const { controller } = createController({ media, persistedVolume: 40 });
+  await controller.init();
+  await controller.lockVolume();
+  media[0].volume = 1;
+  assert.equal(media[0].volume, 0.4);
+});
+
+test('unlockVolume restores normal volume setter behaviour', async () => {
+  const media = [createMedia()];
+  const { controller } = createController({ media, persistedVolume: 40 });
+  await controller.init();
+  await controller.lockVolume();
+  await controller.unlockVolume();
+  media[0].volume = 1;
+  assert.equal(media[0].volume, 1);
+});
+
+test('toggle-lock message toggles the lock state and returns current isLocked', async () => {
+  const { controller } = createController({ persistedVolume: 50 });
+  await controller.init();
+  const r1 = await controller.handleMessage({ action: 'toggle-lock' });
+  const r2 = await controller.handleMessage({ action: 'toggle-lock' });
+  assert.deepEqual(r1, { ok: true, isLocked: true });
+  assert.deepEqual(r2, { ok: true, isLocked: false });
+});
+
+test('setVolume while locked still updates desiredVolume and re-applies the lock', async () => {
+  const media = [createMedia()];
+  const { controller } = createController({ media, persistedVolume: 40 });
+  await controller.init();
+  await controller.lockVolume();
+  await controller.setVolume(80);
+  media[0].volume = 0.1;
+  assert.equal(controller.getVolume().volume, 80);
+  assert.equal(media[0].volume, 0.8);
+});
+
+test('getVolume includes isLocked field reflecting current lock state', async () => {
+  const { controller } = createController();
+  await controller.init();
+  assert.equal(controller.getVolume().isLocked, false);
+  await controller.lockVolume();
+  assert.equal(controller.getVolume().isLocked, true);
 });
