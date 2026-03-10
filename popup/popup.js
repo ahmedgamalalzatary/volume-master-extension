@@ -91,7 +91,7 @@ async function init() {
     tabId = tab.id;
 
     try {
-        const res = await browser.tabs.sendMessage(tabId, { action: 'get-volume' });
+        const res = await browser.tabs.sendMessage(tabId, { action: 'get-state' });
         const vol = (res && typeof res.volume !== 'undefined')
             ? VolumeState.normalizeVolume(res.volume)
             : 100;
@@ -119,6 +119,9 @@ async function init() {
         }
     } catch (_) {
         // Content script not reachable (e.g. about:, moz-extension:, pdf pages)
+        try {
+            await browser.runtime.sendMessage({ action: 'update-badge', tabId, volume: undefined });
+        } catch (_) {}
         slider.disabled = true;
         quickBtns.forEach(b => (b.disabled = true));
         muteBtn.disabled = true;

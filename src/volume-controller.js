@@ -37,6 +37,7 @@
             getMediaElements,
             storage,
             createAudioContext,
+            notifyBadge = async () => {},
             scheduleTask = setTimeout,
             cancelTask = clearTimeout
         } = deps;
@@ -45,11 +46,14 @@
         let desiredVolume = 100;
         let muted = false;
         let preMuteVolume = 100;
+        let locked = false;
         let audioCtx = null;
         let gainNode = null;
         let mutationTaskId = null;
         let initTask = null;
+        let fadeTaskId = null;
         const elementStatus = new WeakMap();
+        const lockedElements = new WeakMap();
 
         function ensureContext() {
             if (audioCtx) return;
@@ -60,6 +64,14 @@
 
         function getMediaList() {
             return Array.from(getMediaElements());
+        }
+
+        function getActiveVolume() {
+            return muted ? 0 : desiredVolume;
+        }
+
+        function notifyBadgeSafe(vol) {
+            return Promise.resolve(notifyBadge(vol)).catch(() => {});
         }
 
         function canUseWebAudioBoost(el) {
@@ -75,6 +87,66 @@
             } catch (_) {
                 return false;
             }
+        }
+
+        function ensureLockOnElement(el) {
+            if (!locked || lockedElements.has(el)) return;
+
+            let descriptor = Object.getOwnPropertyDescriptor(el, 'volume');
+            let owner = el;
+            if (!descriptor) {
+                owner = Object.getPrototypeOf(el);
+                while (owner && !descriptor) {
+                    descriptor = Object.getOwnPropertyDescriptor(owner, 'volume');
+                    owner = Object.getPrototypeOf(owner);
+                }
+            }
+
+            const state = {
+                descriptor,
+                value: Number.isFinite(el.volume) ? el.volume : 1
+            };
+
+            Object.defineProperty(el, 'volume', {
+                configurable: true,
+                enumerable: true,
+                get() {
+                    return state.value;
+                },
+                set(_) {
+                    state.value = desiredVolume / 100;
+                }
+            });
+
+            lockedElements.set(el, state);
+        }
+
+        function removeLockFromElement(el) {
+            const state = lockedElements.get(el);
+            if (!state) return;
+
+            if (state.descriptor) {
+                Object.defineProperty(el, 'volume', state.descriptor);
+                try {
+                    el.volume = state.value;
+                } catch (_) {}
+            } else {
+                delete el.volume;
+            }
+
+            lockedElements.delete(el);
+        }
+
+        function setElementVolume(el, value) {
+            if (locked) {
+                ensureLockOnElement(el);
+                const state = lockedElements.get(el);
+                if (state) {
+                    state.value = value;
+                    return;
+                }
+            }
+            el.volume = value;
         }
 
         function wireElement(el) {
@@ -111,18 +183,14 @@
         }
 
         async function applyVolume() {
-            const effectiveVolume = muted ? 0 : desiredVolume;
-            const vol = effectiveVolume;
+            const vol = getActiveVolume();
             const media = getMediaList();
 
             if (vol <= 100) {
                 if (gainNode) gainNode.gain.value = vol / 100;
                 media.forEach(el => {
-                    if (elementStatus.get(el) === 'wired') {
-                        el.volume = 1.0;
-                    } else {
-                        el.volume = vol / 100;
-                    }
+                    const targetVolume = elementStatus.get(el) === 'wired' ? 1.0 : vol / 100;
+                    setElementVolume(el, targetVolume);
                 });
                 return;
             }
@@ -132,14 +200,14 @@
 
             if (audioCtx.state !== 'running') {
                 media.forEach(el => {
-                    el.volume = 1.0;
+                    setElementVolume(el, 1.0);
                 });
                 return;
             }
 
             media.forEach(el => {
                 wireElement(el);
-                el.volume = 1.0;
+                setElementVolume(el, 1.0);
             });
         }
 
@@ -148,6 +216,7 @@
                 initTask = (async () => {
                     await loadPersistedVolume();
                     await applyVolume();
+                    await notifyBadgeSafe(getActiveVolume());
                 })();
             }
             await initTask;
@@ -161,7 +230,59 @@
                 return { ok: true, volume: normalized };
             }
             await Promise.allSettled([persistVolume(desiredVolume), applyVolume()]);
+            await notifyBadgeSafe(getActiveVolume());
             return { ok: true, volume: desiredVolume };
+        }
+
+        async function stepVolume(delta) {
+            if (!Number.isFinite(delta)) {
+                return { ok: true, volume: desiredVolume };
+            }
+            return setVolume(desiredVolume + delta);
+        }
+
+        async function fadeToVolume(target, options = {}) {
+            const normalizedTarget = volumeState.normalizeVolume(target);
+            const steps = Number.isFinite(options.steps) && options.steps > 0 ? Math.floor(options.steps) : 10;
+            const intervalMs = Number.isFinite(options.intervalMs) && options.intervalMs >= 0 ? Math.floor(options.intervalMs) : 30;
+            const start = desiredVolume;
+
+            if (fadeTaskId !== null) {
+                cancelTask(fadeTaskId);
+                fadeTaskId = null;
+            }
+
+            if (steps === 1 || start === normalizedTarget) {
+                return setVolume(normalizedTarget);
+            }
+
+            let tick = 0;
+            return new Promise(resolve => {
+                const run = async () => {
+                    tick += 1;
+                    const progress = tick / steps;
+                    desiredVolume = volumeState.normalizeVolume(Math.round(start + (normalizedTarget - start) * progress));
+                    await applyVolume();
+                    await notifyBadgeSafe(getActiveVolume());
+
+                    if (tick >= steps) {
+                        fadeTaskId = null;
+                        if (!muted) {
+                            await persistVolume(desiredVolume);
+                        }
+                        resolve({ ok: true, volume: desiredVolume });
+                        return;
+                    }
+
+                    fadeTaskId = scheduleTask(() => {
+                        Promise.resolve(run()).catch(() => {});
+                    }, intervalMs);
+                };
+
+                fadeTaskId = scheduleTask(() => {
+                    Promise.resolve(run()).catch(() => {});
+                }, intervalMs);
+            });
         }
 
         function getVolume() {
@@ -171,7 +292,20 @@
                 hasMedia: mediaList.length > 0,
                 mediaCount: mediaList.length,
                 isMuted: muted,
-                preMuteVolume: preMuteVolume
+                preMuteVolume,
+                isLocked: locked
+            };
+        }
+
+        function getState() {
+            const state = getVolume();
+            return {
+                volume: state.volume,
+                hasMedia: state.hasMedia,
+                mediaCount: state.mediaCount,
+                isMuted: state.isMuted,
+                preMuteVolume: state.preMuteVolume,
+                isLocked: state.isLocked
             };
         }
 
@@ -181,7 +315,8 @@
             muted = false;
             await Promise.allSettled([
                 storage.remove(storageKey),
-                applyVolume()
+                applyVolume(),
+                notifyBadgeSafe(getActiveVolume())
             ]);
             return { ok: true, volume: 100 };
         }
@@ -191,6 +326,7 @@
             preMuteVolume = desiredVolume;
             muted = true;
             await applyVolume();
+            await notifyBadgeSafe(getActiveVolume());
             return { ok: true, volume: 0, isMuted: true };
         }
 
@@ -199,11 +335,30 @@
             muted = false;
             desiredVolume = preMuteVolume;
             await applyVolume();
+            await notifyBadgeSafe(getActiveVolume());
             return { ok: true, volume: desiredVolume, isMuted: false };
         }
 
         function isMuted() {
             return muted;
+        }
+
+        async function lockVolume() {
+            locked = true;
+            getMediaList().forEach(ensureLockOnElement);
+            await applyVolume();
+            return { ok: true, isLocked: true };
+        }
+
+        async function unlockVolume() {
+            locked = false;
+            getMediaList().forEach(removeLockFromElement);
+            await applyVolume();
+            return { ok: true, isLocked: false };
+        }
+
+        function isLocked() {
+            return locked;
         }
 
         async function handleMediaChange() {
@@ -241,22 +396,32 @@
         async function handleMessage(msg) {
             if (!msg || typeof msg !== 'object') return undefined;
             if (msg.action === 'set-volume') return setVolume(msg.volume);
+            if (msg.action === 'step-volume') return stepVolume(msg.delta);
+            if (msg.action === 'fade-volume') return fadeToVolume(msg.target, { steps: msg.steps, intervalMs: msg.intervalMs });
             if (msg.action === 'get-volume') return getVolume();
+            if (msg.action === 'get-state') return getState();
             if (msg.action === 'reset-volume') return resetVolume();
             if (msg.action === 'mute') return mute();
             if (msg.action === 'unmute') return unmute();
             if (msg.action === 'toggle-mute') return muted ? unmute() : mute();
+            if (msg.action === 'toggle-lock') return locked ? unlockVolume() : lockVolume();
             return undefined;
         }
 
         return {
             init,
             setVolume,
+            stepVolume,
+            fadeToVolume,
             getVolume,
+            getState,
             resetVolume,
             mute,
             unmute,
             isMuted,
+            lockVolume,
+            unlockVolume,
+            isLocked,
             handleMediaChange,
             notifyMediaMutation,
             resumeIfSuspended,

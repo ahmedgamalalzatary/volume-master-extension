@@ -1,6 +1,7 @@
 'use strict';
 
 const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+const SCROLL_PREF_KEY = 'vc:scrollControl';
 
 const controller = VolumeController.createVolumeController({
     volumeState: VolumeState,
@@ -22,6 +23,9 @@ const controller = VolumeController.createVolumeController({
     createAudioContext() {
         return new AudioContextCtor();
     },
+    notifyBadge(vol) {
+        return browser.runtime.sendMessage({ action: 'update-badge', volume: vol });
+    },
     scheduleTask(callback, delay) {
         return setTimeout(() => {
             Promise.resolve(callback()).catch(() => { });
@@ -33,6 +37,42 @@ const controller = VolumeController.createVolumeController({
 });
 
 const initPromise = controller.init();
+
+function isMediaTarget(target) {
+    if (!target || typeof target.closest !== 'function') {
+        return false;
+    }
+    return !!target.closest('audio, video');
+}
+
+function setupScrollControl() {
+    document.addEventListener('wheel', async event => {
+        if (!isMediaTarget(event.target)) {
+            return;
+        }
+
+        const delta = ScrollControl.computeScrollDelta(event);
+        if (delta === 0) {
+            return;
+        }
+
+        event.preventDefault();
+        await controller.stepVolume(delta);
+    }, { capture: true, passive: false });
+}
+
+async function initScrollControl() {
+    try {
+        const pref = await browser.storage.local.get(SCROLL_PREF_KEY);
+        if (pref[SCROLL_PREF_KEY] === false) {
+            return;
+        }
+    } catch (_) {
+        // Ignore storage failures and keep defaults.
+    }
+
+    setupScrollControl();
+}
 
 browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     initPromise
@@ -60,3 +100,5 @@ const resumeAC = new AbortController();
 new MutationObserver(() => {
     controller.notifyMediaMutation();
 }).observe(document.documentElement, { subtree: true, childList: true });
+
+initPromise.then(() => initScrollControl()).catch(() => {});

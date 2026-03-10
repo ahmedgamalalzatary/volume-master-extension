@@ -12,7 +12,8 @@ test('content script uses webkitAudioContext fallback when AudioContext is unava
     MutationObserver: global.MutationObserver,
     AbortController: global.AbortController,
     VolumeController: global.VolumeController,
-    VolumeState: global.VolumeState
+    VolumeState: global.VolumeState,
+    ScrollControl: global.ScrollControl
   };
 
   let capturedDeps = null;
@@ -28,7 +29,8 @@ test('content script uses webkitAudioContext fallback when AudioContext is unava
     storage: {
       local: {
         get: async () => ({}),
-        set: async () => {}
+        set: async () => {},
+        remove: async () => {}
       }
     },
     runtime: {
@@ -60,6 +62,7 @@ test('content script uses webkitAudioContext fallback when AudioContext is unava
     abort() {}
   };
   global.VolumeState = {};
+  global.ScrollControl = { computeScrollDelta: () => 0 };
   global.VolumeController = {
     createVolumeController(deps) {
       capturedDeps = deps;
@@ -91,5 +94,6 @@ test('content script uses webkitAudioContext fallback when AudioContext is unava
     global.AbortController = originals.AbortController;
     global.VolumeController = originals.VolumeController;
     global.VolumeState = originals.VolumeState;
+    global.ScrollControl = originals.ScrollControl;
   }
 });
