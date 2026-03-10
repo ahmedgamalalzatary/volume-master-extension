@@ -109,8 +109,8 @@ async function init() {
         // Media count
         if (res && typeof res.mediaCount === 'number') {
             renderMediaCount(res.mediaCount);
-        } else if (res) {
-            renderMediaCount(res.hasMedia ? 1 : 0);
+        } else if (res && res.hasMedia) {
+            renderMediaCount(1);
         }
 
         // Show the no-media hint if the page has no media yet
@@ -185,14 +185,21 @@ muteBtn.addEventListener('click', async () => {
 // ─── Reset ─────────────────────────────────────────────────────────────────
 
 resetBtn.addEventListener('click', async () => {
-    if (isMuted) {
-        isMuted = false;
-        try {
-            await browser.tabs.sendMessage(tabId, { action: 'unmute' });
-        } catch (_) {}
-        renderMuteState();
+    if (tabId === null) {
+        console.warn('Reset failed: no active tab');
+        return;
     }
-    applyVolume(100);
+    try {
+        await browser.tabs.sendMessage(tabId, { action: 'reset-volume' });
+    } catch (e) {
+        console.warn('Reset failed:', e);
+        return;
+    }
+    isMuted = false;
+    preMuteVolume = 100;
+    renderMuteState();
+    slider.value = 100;
+    renderVolume(100);
 });
 
 // ─── Keyboard shortcuts ────────────────────────────────────────────────────

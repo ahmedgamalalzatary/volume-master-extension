@@ -14,6 +14,9 @@ const controller = VolumeController.createVolumeController({
         },
         set(payload) {
             return browser.storage.local.set(payload);
+        },
+        remove(key) {
+            return browser.storage.local.remove(key);
         }
     },
     createAudioContext() {

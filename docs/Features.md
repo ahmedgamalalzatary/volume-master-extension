@@ -1,23 +1,6 @@
 # Planned Features
 
-## 1. Mute / Unmute Toggle
-
-A mute button in the popup that sets volume to 0 and restores the previous level on unmute. The muted state is tracked in memory (not persisted) so a page reload always restores the real persisted volume.
-
-**Files to change:**
-- `src/volume-controller.js` — add `mute()`, `unmute()`, `isMuted()` methods
-- `popup/popup.html` — add mute button element
-- `popup/popup.js` — wire mute button click handler
-
-**Tests to add** (`test/volume-controller.test.js`):
-- `mute() sets volume to 0 and retains pre-mute level`
-- `unmute() restores pre-mute volume without touching storage`
-- `calling mute() twice does not overwrite the saved pre-mute level`
-- `setVolume() while muted updates the pre-mute level, not the active gain`
-
----
-
-## 2. Reset Volume Message Action
+## 1. Reset Volume Message Action
 
 A new `"reset-volume"` message action that resets the current origin's volume to 100 and removes the stored entry. Paired with a Reset button in the popup.
 
@@ -33,23 +16,7 @@ A new `"reset-volume"` message action that resets the current origin's volume to
 
 ---
 
-## 3. Fine / Coarse Keyboard Step in Popup
-
-Plain Arrow keys step ±1%; Shift+Arrow keys step ±10%. Replaces the current fixed ±10 behavior.
-
-**Files to change:**
-- `popup/popup.js` — update `keydown` handler; extract a pure helper `computeStep(key, shiftKey, currentVolume)`
-
-**Tests to add** (`test/popup-keyboard.test.js`, new file):
-- `Arrow without Shift increments by 1`
-- `Arrow without Shift decrements by 1`
-- `Arrow with Shift increments by 10`
-- `Arrow with Shift decrements by 10`
-- `clamps at 0 and 200`
-
----
-
-## 4. Media Element Count in getVolume Response
+## 2. Media Element Count in getVolume Response
 
 Extend the `"get-volume"` response to include a `mediaCount` integer alongside the existing `hasMedia` boolean. The popup can then display the exact number of media elements found on the page.
 
@@ -64,21 +31,7 @@ Extend the `"get-volume"` response to include a `mediaCount` integer alongside t
 
 ---
 
-## 5. Storage Error Handling in init()
-
-Add `.catch()` in `init()` so a rejected `storage.get` call falls back to volume 100 and emits a `console.warn` instead of silently breaking the controller.
-
-**Files to change:**
-- `src/volume-controller.js` — wrap `storage.get` promise in `init()` with a `.catch` fallback
-
-**Tests to add** (`test/volume-controller.test.js`):
-- `init falls back to 100 when storage.get rejects`
-- `init emits a console.warn when storage.get rejects`
-- `init still applies volume to existing media elements after a storage failure`
-
----
-
-## 6. Relative Step Volume
+## 3. Relative Step Volume
 
 A `{ action: 'step-volume', delta: N }` message that increments or decrements the current volume by an arbitrary integer delta, clamped to [0, 200]. Exposed as `stepVolume(delta)` on the controller.
 
@@ -93,7 +46,7 @@ A `{ action: 'step-volume', delta: N }` message that increments or decrements th
 
 ---
 
-## 7. Extended State Query
+## 4. Extended State Query
 
 A `{ action: 'get-state' }` message that returns a richer snapshot: `{ volume, hasMedia, isMuted, preMuteVolume }`. Used by the popup on open to restore both the slider position and the mute button state in one round-trip.
 
@@ -108,7 +61,7 @@ A `{ action: 'get-state' }` message that returns a richer snapshot: `{ volume, h
 
 ---
 
-## 8. Volume Fade
+## 5. Volume Fade
 
 A `{ action: 'fade-volume', target, steps, intervalMs }` message that gradually transitions the active volume from the current level to `target` over `steps` scheduled ticks spaced `intervalMs` ms apart. Exposed as `fadeToVolume(target, options)` on the controller. The final volume is persisted once the fade completes.
 
@@ -123,7 +76,7 @@ A `{ action: 'fade-volume', target, steps, intervalMs }` message that gradually 
 
 ---
 
-## 9. Badge Volume Display
+## 6. Badge Volume Display
 
 Show the current volume level as text on the extension's toolbar icon badge so users can see the active volume at a glance without opening the popup.
 
@@ -153,7 +106,7 @@ Show the current volume level as text on the extension's toolbar icon badge so u
 
 ---
 
-## 10. Volume Lock
+## 7. Volume Lock
 
 Prevent websites from programmatically overriding the volume on media elements. Some sites reset `el.volume` when ads play or on seek events, undoing the user's chosen level.
 
@@ -180,7 +133,7 @@ Prevent websites from programmatically overriding the volume on media elements. 
 
 ---
 
-## 11. Scroll Wheel Volume Control
+## 8. Scroll Wheel Volume Control
 
 Allow users to adjust volume by scrolling the mouse wheel over any `<audio>` or `<video>` element on the page.
 

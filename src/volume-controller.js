@@ -20,8 +20,8 @@
         if (typeof deps.getMediaElements !== 'function') {
             throw new TypeError('createVolumeController requires getMediaElements()');
         }
-        if (!deps.storage || typeof deps.storage.get !== 'function' || typeof deps.storage.set !== 'function') {
-            throw new TypeError('createVolumeController requires storage.get() and storage.set()');
+        if (!deps.storage || typeof deps.storage.get !== 'function' || typeof deps.storage.set !== 'function' || typeof deps.storage.remove !== 'function') {
+            throw new TypeError('createVolumeController requires storage.get(), storage.set(), and storage.remove()');
         }
         if (typeof deps.createAudioContext !== 'function') {
             throw new TypeError('createVolumeController requires createAudioContext()');
@@ -165,12 +165,25 @@
         }
 
         function getVolume() {
+            const mediaList = getMediaList();
             return {
                 volume: desiredVolume,
-                hasMedia: getMediaList().length > 0,
+                hasMedia: mediaList.length > 0,
+                mediaCount: mediaList.length,
                 isMuted: muted,
                 preMuteVolume: preMuteVolume
             };
+        }
+
+        async function resetVolume() {
+            desiredVolume = 100;
+            preMuteVolume = 100;
+            muted = false;
+            await Promise.allSettled([
+                storage.remove(storageKey),
+                applyVolume()
+            ]);
+            return { ok: true, volume: 100 };
         }
 
         async function mute() {
@@ -229,6 +242,7 @@
             if (!msg || typeof msg !== 'object') return undefined;
             if (msg.action === 'set-volume') return setVolume(msg.volume);
             if (msg.action === 'get-volume') return getVolume();
+            if (msg.action === 'reset-volume') return resetVolume();
             if (msg.action === 'mute') return mute();
             if (msg.action === 'unmute') return unmute();
             if (msg.action === 'toggle-mute') return muted ? unmute() : mute();
@@ -239,6 +253,7 @@
             init,
             setVolume,
             getVolume,
+            resetVolume,
             mute,
             unmute,
             isMuted,

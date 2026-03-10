@@ -6,10 +6,12 @@ const { createVolumeController } = require('../src/volume-controller.js');
 function createStorage(initialValue, options = {}) {
   const store = new Map(Object.entries(initialValue || {}));
   const writes = [];
+  const removedKeys = [];
   let getCount = 0;
 
   return {
     writes,
+    removedKeys,
     getCount() {
       return getCount;
     },
@@ -24,6 +26,11 @@ function createStorage(initialValue, options = {}) {
       for (const [key, value] of Object.entries(payload)) {
         store.set(key, value);
       }
+    },
+    async remove(key) {
+      if (options.failRemove) throw new Error('remove failed');
+      removedKeys.push(key);
+      store.delete(key);
     }
   };
 }
@@ -267,7 +274,7 @@ test('getVolume reports current volume and media presence', async () => {
 
   await controller.init();
 
-  assert.deepEqual(controller.getVolume(), { volume: 100, hasMedia: false, isMuted: false, preMuteVolume: 100 });
+  assert.deepEqual(controller.getVolume(), { volume: 100, hasMedia: false, mediaCount: 0, isMuted: false, preMuteVolume: 100 });
 });
 
 test('handleMessage routes get-volume and set-volume messages', async () => {
@@ -279,7 +286,7 @@ test('handleMessage routes get-volume and set-volume messages', async () => {
   const getResponse = await controller.handleMessage({ action: 'get-volume' });
   const setResponse = await controller.handleMessage({ action: 'set-volume', volume: 45 });
 
-  assert.deepEqual(getResponse, { volume: 100, hasMedia: true, isMuted: false, preMuteVolume: 100 });
+  assert.deepEqual(getResponse, { volume: 100, hasMedia: true, mediaCount: 1, isMuted: false, preMuteVolume: 100 });
   assert.deepEqual(setResponse, { ok: true, volume: 45 });
   assert.equal(media[0].volume, 0.45);
 });
@@ -467,10 +474,134 @@ test('getVolume includes isMuted and preMuteVolume fields', async () => {
   await controller.init();
   const state1 = controller.getVolume();
 
-  assert.deepEqual(state1, { volume: 55, hasMedia: true, isMuted: false, preMuteVolume: 100 });
+  assert.deepEqual(state1, { volume: 55, hasMedia: true, mediaCount: 1, isMuted: false, preMuteVolume: 100 });
 
   await controller.mute();
   const state2 = controller.getVolume();
 
-  assert.deepEqual(state2, { volume: 55, hasMedia: true, isMuted: true, preMuteVolume: 55 });
+  assert.deepEqual(state2, { volume: 55, hasMedia: true, mediaCount: 1, isMuted: true, preMuteVolume: 55 });
+});
+
+// ─── Reset Volume ────────────────────────────────────────────────────────────
+
+test('handleMessage reset-volume sets volume to 100 and removes the storage key', async () => {
+  const media = [createMedia()];
+  const { controller, storage, storageKey } = createController({ media, persistedVolume: 75 });
+
+  await controller.init();
+  assert.equal(controller.getVolume().volume, 75);
+
+  const result = await controller.handleMessage({ action: 'reset-volume' });
+
+  assert.deepEqual(result, { ok: true, volume: 100 });
+  assert.equal(controller.getVolume().volume, 100);
+  assert.equal(media[0].volume, 1);
+  assert.ok(storage.removedKeys.includes(storageKey));
+});
+
+test('handleMessage reset-volume returns { ok: true, volume: 100 }', async () => {
+  const { controller } = createController({ persistedVolume: 50 });
+
+  await controller.init();
+  const result = await controller.handleMessage({ action: 'reset-volume' });
+
+  assert.deepEqual(result, { ok: true, volume: 100 });
+});
+
+test('reset-volume at 100 still removes the storage key', async () => {
+  const media = [createMedia()];
+  const { controller, storage, storageKey } = createController({ media });
+
+  await controller.init();
+  assert.equal(controller.getVolume().volume, 100);
+
+  const result = await controller.handleMessage({ action: 'reset-volume' });
+
+  assert.deepEqual(result, { ok: true, volume: 100 });
+  assert.equal(controller.getVolume().volume, 100);
+  assert.equal(media[0].volume, 1);
+  assert.ok(storage.removedKeys.includes(storageKey));
+});
+
+// ─── Media Count ─────────────────────────────────────────────────────────────
+
+test('getVolume returns mediaCount: 0 when no elements exist', async () => {
+  const { controller } = createController({ media: [] });
+
+  await controller.init();
+  const state = controller.getVolume();
+
+  assert.equal(state.mediaCount, 0);
+  assert.equal(state.hasMedia, false);
+});
+
+test('getVolume returns correct mediaCount matching the number of media elements', async () => {
+  const media = [createMedia(), createMedia(), createMedia()];
+  const { controller } = createController({ media });
+
+  await controller.init();
+  const state = controller.getVolume();
+
+  assert.equal(state.mediaCount, 3);
+  assert.equal(state.hasMedia, true);
+});
+
+test('getVolume hasMedia is false when mediaCount is 0 and true otherwise', async () => {
+  const { controller } = createController({ media: [] });
+
+  await controller.init();
+  assert.equal(controller.getVolume().hasMedia, false);
+  assert.equal(controller.getVolume().mediaCount, 0);
+
+  const media = [createMedia()];
+  const { controller: c2 } = createController({ media });
+  await c2.init();
+  assert.equal(c2.getVolume().hasMedia, true);
+  assert.equal(c2.getVolume().mediaCount, 1);
+});
+
+test('reset-volume while muted clears mute state so unmute does not restore old level', async () => {
+  const media = [createMedia()];
+  const { controller } = createController({ media, persistedVolume: 150 });
+
+  await controller.init();
+  await controller.mute();
+  assert.equal(controller.getVolume().isMuted, true);
+  assert.equal(controller.getVolume().preMuteVolume, 150);
+
+  await controller.handleMessage({ action: 'reset-volume' });
+
+  assert.equal(controller.getVolume().volume, 100);
+  assert.equal(controller.getVolume().isMuted, false);
+  assert.equal(controller.getVolume().preMuteVolume, 100);
+
+  const unmuteResult = await controller.unmute();
+  assert.equal(unmuteResult.volume, 100);
+  assert.equal(media[0].volume, 1);
+});
+
+test('reset-volume still sets desiredVolume to 100 in memory when storage.remove fails', async () => {
+  const media = [createMedia()];
+  const { controller } = createController({ media, persistedVolume: 80, storageOptions: { failRemove: true } });
+
+  await controller.init();
+  const result = await controller.handleMessage({ action: 'reset-volume' });
+
+  assert.deepEqual(result, { ok: true, volume: 100 });
+  assert.equal(controller.getVolume().volume, 100);
+  assert.equal(media[0].volume, 1);
+});
+
+test('getVolume mediaCount reflects elements added between calls', async () => {
+  const media = [createMedia()];
+  const { controller } = createController({ media });
+
+  await controller.init();
+  assert.equal(controller.getVolume().mediaCount, 1);
+
+  media.push(createMedia(), createMedia());
+  assert.equal(controller.getVolume().mediaCount, 3);
+
+  media.length = 0;
+  assert.equal(controller.getVolume().mediaCount, 0);
 });
