@@ -749,3 +749,62 @@ test('getVolume includes isLocked field reflecting current lock state', async ()
   await controller.lockVolume();
   assert.equal(controller.getVolume().isLocked, true);
 });
+
+test('setVolume mid-fade cancels remaining fade steps and keeps new volume', async () => {
+  const { controller, scheduledTasks } = createController({ persistedVolume: 50 });
+  await controller.init();
+
+  // Start a 4-step fade 50→100. Step 1 runs synchronously, then suspends on the timer.
+  const fadePromise = controller.fadeToVolume(100, { steps: 4, intervalMs: 10 });
+
+  // Yield so the fade async function runs up to its first await-on-timer.
+  await Promise.resolve();
+
+  // Interrupt: setVolume cancels the fade by bumping fadeVersion.
+  await controller.setVolume(75);
+  assert.equal(controller.getVolume().volume, 75);
+
+  // Flush the pending fade timer — the loop should exit early without overwriting 75.
+  const pendingTask = scheduledTasks.find(t => !t.cleared);
+  if (pendingTask) await pendingTask.callback();
+
+  // fadePromise should now resolve (cancelled early).
+  await fadePromise;
+  assert.equal(controller.getVolume().volume, 75);
+});
+
+test('resetVolume mid-fade cancels the fade', async () => {
+  const { controller, scheduledTasks } = createController({ persistedVolume: 50 });
+  await controller.init();
+
+  const fadePromise = controller.fadeToVolume(100, { steps: 4, intervalMs: 10 });
+  await Promise.resolve();
+
+  await controller.resetVolume();
+  assert.equal(controller.getVolume().volume, 100);
+
+  const pendingTask = scheduledTasks.find(t => !t.cleared);
+  if (pendingTask) await pendingTask.callback();
+
+  await fadePromise;
+  assert.equal(controller.getVolume().volume, 100);
+});
+
+test('starting a new fade cancels the previous in-flight fade', async () => {
+  const { controller, scheduledTasks } = createController({ persistedVolume: 50 });
+  await controller.init();
+
+  const fade1 = controller.fadeToVolume(100, { steps: 4, intervalMs: 10 });
+  await Promise.resolve();
+
+  // Start a second fade — cancels the first.
+  const fade2 = controller.fadeToVolume(60, { steps: 1, intervalMs: 0 });
+
+  // Flush any remaining tasks from the first fade.
+  for (const task of scheduledTasks.filter(t => !t.cleared)) {
+    await task.callback();
+  }
+
+  await Promise.all([fade1, fade2]);
+  assert.equal(controller.getVolume().volume, 60);
+});

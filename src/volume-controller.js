@@ -51,8 +51,13 @@
         let mutationTaskId = null;
         let initTask = null;
         let lockActive = false;
+        let fadeVersion = 0;
         const elementStatus = new WeakMap();
         const lockedElements = new Set();
+
+        function cancelActiveFade() {
+            fadeVersion += 1;
+        }
 
         function getNativeVolume(el) {
             const descriptor = Object.getOwnPropertyDescriptor(el, 'volume');
@@ -214,6 +219,7 @@
         }
 
         async function setVolume(value) {
+            cancelActiveFade();
             const normalized = volumeState.normalizeVolume(value);
             desiredVolume = normalized;
             if (muted) {
@@ -250,6 +256,7 @@
         }
 
         async function resetVolume() {
+            cancelActiveFade();
             desiredVolume = 100;
             preMuteVolume = 100;
             muted = false;
@@ -262,11 +269,14 @@
         }
 
         async function fadeToVolume(target, options = {}) {
+            cancelActiveFade();
+            const myVersion = fadeVersion;
             const normalizedTarget = volumeState.normalizeVolume(target);
             const steps = Number.isFinite(options.steps) && options.steps > 0 ? Math.floor(options.steps) : 10;
             const intervalMs = Number.isFinite(options.intervalMs) && options.intervalMs >= 0 ? Math.floor(options.intervalMs) : 30;
             const start = desiredVolume;
             for (let i = 1; i <= steps; i += 1) {
+                if (fadeVersion !== myVersion) return { ok: true, volume: desiredVolume };
                 const nextVol = volumeState.normalizeVolume(Math.round(start + ((normalizedTarget - start) * i) / steps));
                 desiredVolume = nextVol;
                 await applyVolume();
@@ -276,12 +286,14 @@
                     });
                 }
             }
+            if (fadeVersion !== myVersion) return { ok: true, volume: desiredVolume };
             await persistVolume(desiredVolume);
             await notifyBadge(desiredVolume);
             return { ok: true, volume: desiredVolume };
         }
 
         async function mute() {
+            cancelActiveFade();
             if (muted) return { ok: true, volume: 0, isMuted: true };
             preMuteVolume = desiredVolume;
             muted = true;
@@ -290,6 +302,7 @@
         }
 
         async function unmute() {
+            cancelActiveFade();
             if (!muted) return { ok: true, volume: desiredVolume, isMuted: false };
             muted = false;
             desiredVolume = preMuteVolume;
