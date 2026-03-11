@@ -1,6 +1,7 @@
 'use strict';
 
 const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+const SCROLL_PREF_KEY = 'vc:scrollControl';
 
 const controller = VolumeController.createVolumeController({
     volumeState: VolumeState,
@@ -21,6 +22,9 @@ const controller = VolumeController.createVolumeController({
     },
     createAudioContext() {
         return new AudioContextCtor();
+    },
+    notifyBadge(vol) {
+        return browser.runtime.sendMessage({ action: 'update-badge', volume: vol });
     },
     scheduleTask(callback, delay) {
         return setTimeout(() => {
@@ -60,3 +64,30 @@ const resumeAC = new AbortController();
 new MutationObserver(() => {
     controller.notifyMediaMutation();
 }).observe(document.documentElement, { subtree: true, childList: true });
+
+function getMediaTarget(target) {
+    if (!target || typeof target.closest !== 'function') return null;
+    return target.closest('audio, video');
+}
+
+async function setupScrollControl() {
+    let enabled = true;
+    try {
+        const pref = await browser.storage.local.get(SCROLL_PREF_KEY);
+        if (typeof pref[SCROLL_PREF_KEY] === 'boolean') {
+            enabled = pref[SCROLL_PREF_KEY];
+        }
+    } catch (_) { }
+
+    if (!enabled) return;
+
+    document.addEventListener('wheel', async event => {
+        if (!getMediaTarget(event.target)) return;
+        const delta = ScrollControl.computeScrollDelta(event);
+        if (delta === 0) return;
+        event.preventDefault();
+        await controller.stepVolume(delta);
+    }, { capture: true, passive: false });
+}
+
+initPromise.then(setupScrollControl).catch(() => { });
